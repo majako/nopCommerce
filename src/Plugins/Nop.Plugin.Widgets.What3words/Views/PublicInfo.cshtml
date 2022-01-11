@@ -26,7 +26,6 @@
     $(document).ready(function() {
         $("#@(Model.Prefix)_CountryId").change(function(){
             var selectedItem = $(this).children("option:selected").val();
-            console.log(selectedItem);
             var w3w = $("#what3words-autosuggest_@(Model.Prefix)");
             $.ajax({
                 cache: false,
@@ -36,7 +35,6 @@
                     "countryId": selectedItem
                 },
                 success: function (data, textStatus, jqXHR) {
-                    console.log(data);
                     w3w.removeProp('clip_to_country');
                     if (data){
                         w3w.prop('clip_to_country', data);
