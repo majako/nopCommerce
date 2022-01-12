@@ -27,7 +27,7 @@ namespace Nop.Plugin.Widgets.What3words.Controllers
 
         public async Task<IActionResult> GetAlpha2byCountryName(int countryId)
         {
-            var result = (await _countryService.GetCountryByIdAsync(countryId)).TwoLetterIsoCode;
+            var result = (await _countryService.GetCountryByIdAsync(countryId))?.TwoLetterIsoCode;
             return Json(result);
         }
 
