@@ -22,7 +22,7 @@
     </div>
 </div>
 
-<script>
+<script asp-location="Footer">
     $(document).ready(function() {
         $("#@(Model.Prefix)_CountryId").change(function(){
             var selectedItem = $(this).children("option:selected").val();
