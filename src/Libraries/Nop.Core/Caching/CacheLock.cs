@@ -5,14 +5,10 @@ namespace Nop.Core.Caching
 {
     public struct CacheLock
     {
-        private readonly SemaphoreSlim _semaphore;
-        private readonly CancellationTokenSource _tokenSource;
+        private readonly SemaphoreSlim _semaphore = new(1, 1);
+        private readonly CancellationTokenSource _tokenSource = new();
 
-        public CacheLock()
-        {
-            _tokenSource = new();
-            _semaphore = new(1, 1);
-        }
+        public CacheLock() { }
 
         public async Task WaitAsync()
         {

@@ -1,42 +1,32 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Distributed;
 using Newtonsoft.Json;
-using Nito.AsyncEx;
-using Nop.Core.ComponentModel;
 using Nop.Core.Configuration;
 
 namespace Nop.Core.Caching
 {
     /// <summary>
-    /// Represents a distributed cache 
+    /// A distributed cache manager that locks the acquisition task
     /// </summary>
-    public partial class DistributedCacheManager: CacheKeyService, ILocker, IStaticCacheManager
+    public partial class DistributedCacheManager : CacheKeyService, IStaticCacheManager
     {
         #region Fields
 
         private readonly IDistributedCache _distributedCache;
         private readonly PerRequestCache _perRequestCache;
-        private static readonly List<string> _keys;
-        private static readonly AsyncLock _locker;
+
+        private static readonly ConcurrentDictionary<string, Lazy<CacheLock>> _locksByKey = new();
 
         #endregion
 
         #region Ctor
 
-        static DistributedCacheManager()
-        {
-            _locker = new AsyncLock();
-            _keys = new List<string>();
-        }
-
-        public DistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache, IHttpContextAccessor httpContextAccessor) :base(appSettings)
+        public DistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache, IHttpContextAccessor httpContextAccessor) : base(appSettings)
         {
             _distributedCache = distributedCache;
             _perRequestCache = new PerRequestCache(httpContextAccessor);
@@ -46,84 +36,110 @@ namespace Nop.Core.Caching
 
         #region Utilities
 
+        private static async Task<CacheLock> AcquireLockAsync(string key)
+        {
+            while (true)
+            {
+                var cacheLock = _locksByKey.GetOrAdd(key, _ => new Lazy<CacheLock>(() => new(), true)).Value;
+                try
+                {
+                    await cacheLock.WaitAsync();
+                    return cacheLock;
+                }
+                catch   // cacheLock was removed while waiting, acquire a new instance
+                {
+                }
+            }
+        }
+
         /// <summary>
         /// Prepare cache entry options for the passed key
         /// </summary>
         /// <param name="key">Cache key</param>
         /// <returns>Cache entry options</returns>
-        private DistributedCacheEntryOptions PrepareEntryOptions(CacheKey key)
+        private static DistributedCacheEntryOptions PrepareEntryOptions(CacheKey key)
         {
             //set expiration time for the passed cache key
-            var options = new DistributedCacheEntryOptions
+            return new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(key.CacheTime)
             };
-            
-            return options;
         }
 
-        /// <summary>
-        /// Try to get the cached item
-        /// </summary>
-        /// <typeparam name="T">Type of cached item</typeparam>
-        /// <param name="key">Cache key</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the flag which indicate is the key exists in the cache, cached item or default value
-        /// </returns>
-        private async Task<(bool isSet, T item)> TryGetItemAsync<T>(CacheKey key)
+        private async Task<(bool isSet, T item)> TryGetItemAsync<T>(string key)
         {
-            var json = await _distributedCache.GetStringAsync(key.Key);
+            var cacheLock = await AcquireLockAsync(key);
+            try
+            {
+                var json = await _distributedCache.GetStringAsync(key);
 
-            if (string.IsNullOrEmpty(json)) 
-                return (false, default);
+                if (string.IsNullOrEmpty(json))
+                    return (false, default);
 
-            var item = JsonConvert.DeserializeObject<T>(json);
-            _perRequestCache.Set(key.Key, item);
+                var item = JsonConvert.DeserializeObject<T>(json);
+                _perRequestCache.Set(key, item);
 
-            using var _ = await _locker.LockAsync();
-            _keys.Add(key.Key);
-
-            return (true, item);
+                return (true, item);
+            }
+            finally
+            {
+                cacheLock.Release();
+            }
         }
 
-        /// <summary>
-        /// Try to get the cached item
-        /// </summary>
-        /// <typeparam name="T">Type of cached item</typeparam>
-        /// <param name="key">Cache key</param>
-        /// <returns>Flag which indicate is the key exists in the cache, cached item or default value</returns>
-        private (bool isSet, T item) TryGetItem<T>(CacheKey key)
+        private bool TryGetFromPerRequestCache<T>(string key, out T value)
         {
-            var json = _distributedCache.GetString(key.Key);
-
-            if (string.IsNullOrEmpty(json))
-                return (false, default);
-
-            var item = JsonConvert.DeserializeObject<T>(json);
-            _perRequestCache.Set(key.Key, item);
-
-            using var _ = _locker.Lock();
-            _keys.Add(key.Key);
-
-            return (true, item);
+            value = default;
+            if (!_perRequestCache.IsSet(key))
+                return false;
+            value = _perRequestCache.Get(key, () => default(T));
+            return true;
         }
 
-        /// <summary>
-        /// Add the specified key and object to the cache
-        /// </summary>
-        /// <param name="key">Key of cached item</param>
-        /// <param name="data">Value for caching</param>
-        private void Set(CacheKey key, object data)
+        private async Task<T> GetOrSetAsync<T>(CacheKey key, Func<Task<T>> acquire, bool forceOverwrite)
         {
-            if ((key?.CacheTime ?? 0) <= 0 || data == null)
-                return;
+            if ((key?.CacheTime ?? 0) <= 0)
+                return await acquire();
 
-            _distributedCache.SetString(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
-            _perRequestCache.Set(key.Key, data);
+            var setTask = Task.CompletedTask;
+            var cacheLock = await AcquireLockAsync(key.Key);
+            try
+            {
+                T data = default;
+                if (!forceOverwrite)
+                {
+                    if (TryGetFromPerRequestCache(key.Key, out data))
+                        return data;
+                    var json = await _distributedCache.GetStringAsync(key.Key);
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        data = JsonConvert.DeserializeObject<T>(json);
+                        _perRequestCache.Set(key.Key, data);
+                        return data;
+                    }
+                }
+                data = await acquire();
+                if (data != null)
+                {
+                    _perRequestCache.Set(key.Key, data);
+                    setTask = _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
+                }
+                return data;
+            }
+            finally
+            {
+                _ = setTask.ContinueWith(_ => cacheLock.Release());
+            }
+        }
 
-            using var _ = _locker.Lock();
-            _keys.Add(key.Key);
+        private async Task RemoveAsync(string key, bool removeFromPerRequestCache = true)
+        {
+            var cacheLock = await AcquireLockAsync(key);
+            await _distributedCache.RemoveAsync(key);
+            if (removeFromPerRequestCache)
+                _perRequestCache.Remove(key);
+            _locksByKey.Remove(key, out _);
+            cacheLock.Cancel();
         }
 
         #endregion
@@ -131,11 +147,14 @@ namespace Nop.Core.Caching
         #region Methods
 
         /// <summary>
-        /// Performs application-defined tasks associated with freeing,
-        /// releasing, or resetting unmanaged resources.
+        /// Remove the value with the specified key from the cache
         /// </summary>
-        public void Dispose()
+        /// <param name="cacheKey">Cache key</param>
+        /// <param name="cacheKeyParameters">Parameters to create cache key</param>
+        /// <returns>A task that represents the asynchronous operation</returns>
+        public Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
         {
+            return RemoveAsync(PrepareKey(cacheKey, cacheKeyParameters).Key);
         }
 
         /// <summary>
@@ -150,26 +169,10 @@ namespace Nop.Core.Caching
         /// </returns>
         public async Task<T> GetAsync<T>(CacheKey key, Func<Task<T>> acquire)
         {
-            //little performance workaround here:
-            //we use "PerRequestCache" to cache a loaded object in memory for the current HTTP request.
-            //this way we won't connect to Redis server many times per HTTP request (e.g. each time to load a locale or setting)
-            if (_perRequestCache.IsSet(key.Key))
-                return _perRequestCache.Get(key.Key, () => default(T));
-
-            if (key.CacheTime <= 0)
-                return await acquire();
-
-            var (isSet, item) = await TryGetItemAsync<T>(key);
-
-            if (isSet)
-                return item;
-
-            var result = await acquire();
-
-            if (result != null)
-                await SetAsync(key, result);
-
-            return result;
+            if (TryGetFromPerRequestCache(key.Key, out T data))
+                return data;
+            var (isSet, item) = await TryGetItemAsync<T>(key.Key);
+            return isSet ? item : await GetOrSetAsync(key, acquire, false);
         }
 
         /// <summary>
@@ -182,28 +185,9 @@ namespace Nop.Core.Caching
         /// A task that represents the asynchronous operation
         /// The task result contains the cached value associated with the specified key
         /// </returns>
-        public async Task<T> GetAsync<T>(CacheKey key, Func<T> acquire)
+        public Task<T> GetAsync<T>(CacheKey key, Func<T> acquire)
         {
-            //little performance workaround here:
-            //we use "PerRequestCache" to cache a loaded object in memory for the current HTTP request.
-            //this way we won't connect to Redis server many times per HTTP request (e.g. each time to load a locale or setting)
-            if (_perRequestCache.IsSet(key.Key))
-                return _perRequestCache.Get(key.Key, () => default(T));
-
-            if (key.CacheTime <= 0)
-                return acquire();
-
-            var (isSet, item) = await TryGetItemAsync<T>(key);
-
-            if (isSet)
-                return item;
-
-            var result = acquire();
-
-            if (result != null)
-                await SetAsync(key, result);
-
-            return result;
+            return GetAsync(key, () => Task.FromResult(acquire()));
         }
 
         /// <summary>
@@ -215,43 +199,11 @@ namespace Nop.Core.Caching
         /// <returns>The cached value associated with the specified key</returns>
         public T Get<T>(CacheKey key, Func<T> acquire)
         {
-            //little performance workaround here:
-            //we use "PerRequestCache" to cache a loaded object in memory for the current HTTP request.
-            //this way we won't connect to Redis server many times per HTTP request (e.g. each time to load a locale or setting)
-            if (_perRequestCache.IsSet(key.Key))
-                return _perRequestCache.Get(key.Key, () => default(T));
-
-            if (key.CacheTime <= 0)
-                return acquire();
-
-            var (isSet, item) = TryGetItem<T>(key);
-
-            if (isSet)
-                return item;
-
-            var result = acquire();
-
-            if (result != null)
-                Set(key, result);
-
-            return result;
-        }
-
-        /// <summary>
-        /// Remove the value with the specified key from the cache
-        /// </summary>
-        /// <param name="cacheKey">Cache key</param>
-        /// <param name="cacheKeyParameters">Parameters to create cache key</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
-        {
-            cacheKey = PrepareKey(cacheKey, cacheKeyParameters);
-
-            await _distributedCache.RemoveAsync(cacheKey.Key);
-            _perRequestCache.Remove(cacheKey.Key);
-
-            using var _ = await _locker.LockAsync();
-            _keys.Remove(cacheKey.Key);
+            var getTask = GetAsync(key, acquire);
+            getTask.Wait();
+            if (getTask.IsCompletedSuccessfully)
+                return getTask.Result;
+            throw getTask.Exception;
         }
 
         /// <summary>
@@ -260,16 +212,11 @@ namespace Nop.Core.Caching
         /// <param name="key">Key of cached item</param>
         /// <param name="data">Value for caching</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task SetAsync(CacheKey key, object data)
+        public Task SetAsync(CacheKey key, object data)
         {
-            if ((key?.CacheTime ?? 0) <= 0 || data == null)
-                return;
-
-            await _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
-            _perRequestCache.Set(key.Key, data);
-
-            using var _ = await _locker.LockAsync();
-            _keys.Add(key.Key);
+            return data != null
+                ? GetOrSetAsync(key, () => Task.FromResult(data), true)
+                : Task.CompletedTask;
         }
 
         /// <summary>
@@ -278,18 +225,15 @@ namespace Nop.Core.Caching
         /// <param name="prefix">Cache key prefix</param>
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
+        public Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
-            prefix = PrepareKeyPrefix(prefix, prefixParameters);
-            _perRequestCache.RemoveByPrefix(prefix);
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
+            _perRequestCache.RemoveByPrefix(prefix_);
 
-            using var _ = await _locker.LockAsync();
-            
-            foreach (var key in _keys.Where(key => key.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase)).ToList())
-            {
-                await _distributedCache.RemoveAsync(key);
-                _keys.Remove(key);
-            }
+            // _keys is a ConcurrentDictionary, so we don't need to worry about modifying it while iterating over it
+            return Task.WhenAll(_locksByKey.Keys
+                .Where(key => key.StartsWith(prefix_, StringComparison.InvariantCultureIgnoreCase))
+                .Select(key => RemoveAsync(key, false)));
         }
 
         /// <summary>
@@ -298,200 +242,12 @@ namespace Nop.Core.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public async Task ClearAsync()
         {
-            //we can't use _perRequestCache.Clear(),
-            //because HttpContext stores some server data that we should not delete
-            foreach (var redisKey in _keys)
-                _perRequestCache.Remove(redisKey);
-
-            using var _ = await _locker.LockAsync();
-
-            foreach (var key in _keys) 
-                await _distributedCache.RemoveAsync(key);
-
-            _keys.Clear();
+            await Task.WhenAll(_locksByKey.Keys.Select(key => RemoveAsync(key)));
         }
 
-        /// <summary>
-        /// Perform some action with exclusive lock
-        /// </summary>
-        /// <param name="resource">The key we are locking on</param>
-        /// <param name="expirationTime">The time after which the lock will automatically be expired</param>
-        /// <param name="action">Action to be performed with locking</param>
-        /// <returns>True if lock was acquired and action was performed; otherwise false</returns>
-        public bool PerformActionWithLock(string resource, TimeSpan expirationTime, Action action)
+        public void Dispose()
         {
-            //ensure that lock is acquired
-            if (!string.IsNullOrEmpty(_distributedCache.GetString(resource)))
-                return false;
-
-            try
-            {
-                _distributedCache.SetString(resource, resource, new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = expirationTime
-                });
-
-                //perform action
-                action();
-
-                return true;
-            }
-            finally
-            {
-                //release lock even if action fails
-                _distributedCache.Remove(resource);
-            }
-        }
-
-        #endregion
-
-        #region Nested class
-
-        /// <summary>
-        /// Represents a manager for caching during an HTTP request (short term caching)
-        /// </summary>
-        protected class PerRequestCache
-        {
-            #region Fields
-
-            private readonly IHttpContextAccessor _httpContextAccessor;
-            private readonly ReaderWriterLockSlim _lockSlim;
-
-            #endregion
-
-            #region Ctor
-
-            public PerRequestCache(IHttpContextAccessor httpContextAccessor)
-            {
-                _httpContextAccessor = httpContextAccessor;
-
-                _lockSlim = new ReaderWriterLockSlim();
-            }
-
-            #endregion
-
-            #region Utilities
-
-            /// <summary>
-            /// Get a key/value collection that can be used to share data within the scope of this request
-            /// </summary>
-            protected virtual IDictionary<object, object> GetItems()
-            {
-                return _httpContextAccessor.HttpContext?.Items;
-            }
-
-            #endregion
-
-            #region Methods
-
-            /// <summary>
-            /// Get a cached item. If it's not in the cache yet, then load and cache it
-            /// </summary>
-            /// <typeparam name="T">Type of cached item</typeparam>
-            /// <param name="key">Cache key</param>
-            /// <param name="acquire">Function to load item if it's not in the cache yet</param>
-            /// <returns>The cached value associated with the specified key</returns>
-            public virtual T Get<T>(string key, Func<T> acquire)
-            {
-                IDictionary<object, object> items;
-
-                using (new ReaderWriteLockDisposable(_lockSlim, ReaderWriteLockType.Read))
-                {
-                    items = GetItems();
-                    if (items == null)
-                        return acquire();
-
-                    //item already is in cache, so return it
-                    if (items[key] != null)
-                        return (T)items[key];
-                }
-
-                //or create it using passed function
-                var result = acquire();
-
-                //and set in cache (if cache time is defined)
-                using (new ReaderWriteLockDisposable(_lockSlim))
-                    items[key] = result;
-
-                return result;
-            }
-
-            /// <summary>
-            /// Add the specified key and object to the cache
-            /// </summary>
-            /// <param name="key">Key of cached item</param>
-            /// <param name="data">Value for caching</param>
-            public virtual void Set(string key, object data)
-            {
-                if (data == null)
-                    return;
-
-                using (new ReaderWriteLockDisposable(_lockSlim))
-                {
-                    var items = GetItems();
-                    if (items == null)
-                        return;
-
-                    items[key] = data;
-                }
-            }
-
-            /// <summary>
-            /// Get a value indicating whether the value associated with the specified key is cached
-            /// </summary>
-            /// <param name="key">Key of cached item</param>
-            /// <returns>True if item already is in cache; otherwise false</returns>
-            public virtual bool IsSet(string key)
-            {
-                using (new ReaderWriteLockDisposable(_lockSlim, ReaderWriteLockType.Read))
-                {
-                    var items = GetItems();
-                    return items?[key] != null;
-                }
-            }
-
-            /// <summary>
-            /// Remove the value with the specified key from the cache
-            /// </summary>
-            /// <param name="key">Key of cached item</param>
-            public virtual void Remove(string key)
-            {
-                using (new ReaderWriteLockDisposable(_lockSlim))
-                {
-                    var items = GetItems();
-                    items?.Remove(key);
-                }
-            }
-
-            /// <summary>
-            /// Remove items by key prefix
-            /// </summary>
-            /// <param name="prefix">String key prefix</param>
-            public virtual void RemoveByPrefix(string prefix)
-            {
-                using (new ReaderWriteLockDisposable(_lockSlim, ReaderWriteLockType.UpgradeableRead))
-                {
-                    var items = GetItems();
-                    if (items == null)
-                        return;
-
-                    //get cache keys that matches pattern
-                    var regex = new Regex(prefix,
-                        RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-                    var matchesKeys = items.Keys.Select(p => p.ToString())
-                        .Where(key => regex.IsMatch(key ?? string.Empty)).ToList();
-
-                    if (!matchesKeys.Any())
-                        return;
-
-                    using (new ReaderWriteLockDisposable(_lockSlim))
-                    //remove matching values
-                    foreach (var key in matchesKeys) 
-                        items.Remove(key);
-                }
-            }
-
-            #endregion
+            GC.SuppressFinalize(this);
         }
 
         #endregion

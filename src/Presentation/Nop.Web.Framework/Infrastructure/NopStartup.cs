@@ -2,8 +2,11 @@
 using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Nop.Core;
 using Nop.Core.Caching;
 using Nop.Core.Configuration;
@@ -93,14 +96,28 @@ namespace Nop.Web.Framework.Infrastructure
 
             //static cache manager
             var appSettings = Singleton<AppSettings>.Instance;
-            if (appSettings.Get<DistributedCacheConfig>().Enabled)
+            var distributedCacheConfig = appSettings.Get<DistributedCacheConfig>();
+            if (distributedCacheConfig.Enabled)
             {
-                services.AddScoped<ILocker, DistributedCacheManager>();
-                services.AddScoped<IStaticCacheManager, DistributedCacheManager>();
+                if (distributedCacheConfig.DistributedCacheType == DistributedCacheType.RedisSynchronizedMemory)
+                {
+                    services.AddSingleton<IStaticCacheManager, MemoryCacheManager>(services =>
+                        new MemoryCacheManager(
+                            appSettings,
+                            new RedisSynchronizedMemoryCache(
+                                services.GetRequiredService<IMemoryCache>(),
+                                services.GetRequiredService<IOptions<RedisCacheOptions>>(),
+                                MemoryCacheManager.LOCK_PREFIX)));
+                }
+                else
+                {
+                    services.AddScoped<IStaticCacheManager, DistributedCacheManager>();
+                }
+                services.AddSingleton<ILocker, DistributedCacheLocker>();
             }
             else
             {
-                services.AddSingleton<ILocker, MemoryCacheManager>();
+                services.AddSingleton<ILocker, MemoryCacheLocker>();
                 services.AddSingleton<IStaticCacheManager, MemoryCacheManager>();
             }
 

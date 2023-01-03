@@ -12,7 +12,7 @@ namespace Nop.Core.Caching
     /// <summary>
     /// A memory cache manager that locks the acquisition task
     /// </summary>
-    public partial class MemoryCacheManager : CacheKeyService, IStaticCacheManager, ILocker
+    public partial class MemoryCacheManager : CacheKeyService, IStaticCacheManager
     {
         public const string LOCK_PREFIX = "MemoryCacheManager.Lock";
 
@@ -271,11 +271,6 @@ namespace Nop.Core.Caching
             }
 
             _disposed = true;
-        }
-
-        public bool PerformActionWithLock(string resource, TimeSpan expirationTime, Action action)
-        {
-            throw new NotImplementedException();
         }
 
         #endregion
