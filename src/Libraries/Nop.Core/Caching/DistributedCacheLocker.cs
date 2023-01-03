@@ -50,11 +50,6 @@ namespace Nop.Core.Caching
             }
         }
 
-        public bool PerformActionWithLock(string resource, TimeSpan expirationTime, Action action)
-        {
-            return PerformActionWithLockAsync(resource, expirationTime, () => Task.Run(action)).Result;
-        }
-
         public async Task RunWithHeartbeatAsync(string key, TimeSpan expirationTime, TimeSpan heartbeatInterval, Func<CancellationToken, Task> action, CancellationTokenSource cancellationTokenSource = default)
         {
             if (!string.IsNullOrEmpty(await _distributedCache.GetStringAsync(key)))

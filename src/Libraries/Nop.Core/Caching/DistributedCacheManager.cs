@@ -191,22 +191,6 @@ namespace Nop.Core.Caching
         }
 
         /// <summary>
-        /// Get a cached item. If it's not in the cache yet, then load and cache it
-        /// </summary>
-        /// <typeparam name="T">Type of cached item</typeparam>
-        /// <param name="key">Cache key</param>
-        /// <param name="acquire">Function to load item if it's not in the cache yet</param>
-        /// <returns>The cached value associated with the specified key</returns>
-        public T Get<T>(CacheKey key, Func<T> acquire)
-        {
-            var getTask = GetAsync(key, acquire);
-            getTask.Wait();
-            if (getTask.IsCompletedSuccessfully)
-                return getTask.Result;
-            throw getTask.Exception;
-        }
-
-        /// <summary>
         /// Add the specified key and object to the cache
         /// </summary>
         /// <param name="key">Key of cached item</param>
