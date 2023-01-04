@@ -24,6 +24,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Moq;
 using Nop.Core;
@@ -103,14 +104,14 @@ namespace Nop.Tests
 
         private static void Init()
         {
-            
+
             var dataProvider = _serviceProvider.GetService<IDataProviderManager>().DataProvider;
-            
+
             dataProvider.CreateDatabase(null);
             dataProvider.InitializeDatabase();
 
             var languagePackInfo = (DownloadUrl: string.Empty, Progress: 0);
-            
+
             _serviceProvider.GetService<IInstallationService>()
                 .InstallRequiredDataAsync(NopTestsDefaults.AdminEmail, NopTestsDefaults.AdminPassword, languagePackInfo, null, null).Wait();
             _serviceProvider.GetService<IInstallationService>().InstallSampleDataAsync(NopTestsDefaults.AdminEmail).Wait();
@@ -118,7 +119,7 @@ namespace Nop.Tests
             var provider = (IPermissionProvider)Activator.CreateInstance(typeof(StandardPermissionProvider));
             EngineContext.Current.Resolve<IPermissionService>().InstallPermissionsAsync(provider).Wait();
         }
-        
+
         protected static T PropertiesShouldEqual<T, Tm>(T entity, Tm model, params string[] filter) where T : BaseEntity
         where Tm : BaseNopModel
         {
@@ -174,7 +175,7 @@ namespace Nop.Tests
                 .FindClassesOfType<IConfig>()
                 .Select(configType => (IConfig)Activator.CreateInstance(configType))
                 .ToList();
-            
+
             var appSettings = new AppSettings(configurations);
             appSettings.Update(new List<IConfig> { Singleton<DataConfig>.Instance });
             Singleton<AppSettings>.Instance = appSettings;
@@ -262,7 +263,11 @@ namespace Nop.Tests
             var distributedCache = new Mock<IDistributedCache>();
             services.AddSingleton(distributedCache.Object);
             services.AddSingleton<DistributedCacheManager>();
-            
+            services.AddSingleton(serviceProvider => new DistributedCacheLocker(
+                    new MemoryDistributedCache(
+                        Options.Create(new MemoryDistributedCacheOptions()))
+                ));
+
             //services
             services.AddTransient<IBackInStockSubscriptionService, BackInStockSubscriptionService>();
             services.AddTransient<ICategoryService, CategoryService>();
@@ -539,14 +544,14 @@ namespace Nop.Tests
                 return (T)EngineContext.Current.ResolveUnregistered(typeof(T));
             }
         }
-        
+
         public async Task TestCrud<TEntity>(TEntity baseEntity, Func<TEntity, Task> insert, TEntity updateEntity, Func<TEntity, Task> update, Func<int, Task<TEntity>> getById, Func<TEntity, TEntity, bool> equals, Func<TEntity, Task> delete) where TEntity : BaseEntity
         {
             baseEntity.Id = 0;
 
             await insert(baseEntity);
             baseEntity.Id.Should().BeGreaterThan(0);
-            
+
             updateEntity.Id = baseEntity.Id;
             await update(updateEntity);
 

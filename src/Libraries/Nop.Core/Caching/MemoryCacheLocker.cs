@@ -32,16 +32,15 @@ namespace Nop.Core.Caching
             var started = false;
             try
             {
-                var task = Task.CompletedTask;
-                _ = _memoryCache.GetOrCreate(key, entry => new Lazy<CancellationTokenSource>(() =>
+                var tokenSource = _memoryCache.GetOrCreate(key, entry => new Lazy<CancellationTokenSource>(() =>
                 {
                     entry.AbsoluteExpirationRelativeToNow = expirationTime;
-                    var cts = cancellationTokenSource ?? new();
                     started = true;
-                    task = action(cts.Token);
-                    return cts;
-                })).Value;
-                await task;
+                    return cancellationTokenSource ?? new();
+                }, true)).Value;
+
+                if (started)
+                  await action(tokenSource.Token);
             }
             catch (OperationCanceledException) { }
             finally
@@ -63,13 +62,13 @@ namespace Nop.Core.Caching
 
         public async Task RunWithHeartbeatAsync(string key, TimeSpan expirationTime, TimeSpan heartbeatInterval, Func<CancellationToken, Task> action, CancellationTokenSource cancellationTokenSource = default)
         {
-            _ = await RunAsync(key, expirationTime, action, cancellationTokenSource);
+            await RunAsync(key, expirationTime, action, cancellationTokenSource);
         }
 
         public Task CancelTaskAsync(string key, TimeSpan expirationTime)
         {
-            if (_memoryCache.TryGetValue(key, out CancellationTokenSource tokenSource))
-                tokenSource.Cancel();
+            if (_memoryCache.TryGetValue(key, out Lazy<CancellationTokenSource> tokenSource))
+                tokenSource.Value.Cancel();
             return Task.CompletedTask;
         }
 

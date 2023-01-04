@@ -10,6 +10,7 @@ namespace Nop.Core.Caching
     {
         #region Fields
 
+        private static readonly string _running = JsonConvert.SerializeObject(TaskStatus.Running);
         private readonly IDistributedCache _distributedCache;
 
         #endregion
@@ -38,7 +39,6 @@ namespace Nop.Core.Caching
                     AbsoluteExpirationRelativeToNow = expirationTime
                 });
 
-                //perform action
                 await action();
 
                 return true;
@@ -55,26 +55,33 @@ namespace Nop.Core.Caching
             if (!string.IsNullOrEmpty(await _distributedCache.GetStringAsync(key)))
                 return;
 
-            var tokenSource = cancellationTokenSource ?? new();
+            async Task heartbeat(CancellationToken token) => await _distributedCache.SetStringAsync(
+                key,
+                _running,
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = expirationTime },
+                token: token);
 
             try
             {
-                var running = JsonConvert.SerializeObject(TaskStatus.Running);
+                var tokenSource = cancellationTokenSource ?? new();
+                // run heartbeat early to minimise risk of multiple execution
+                await heartbeat(tokenSource.Token);
+
                 using var timer = new Timer(
                     callback: async state =>
                     {
-                        if (tokenSource.IsCancellationRequested)
-                            return;
-                        var status = await _distributedCache.GetStringAsync(key);
-                        if (!string.IsNullOrEmpty(status) && JsonConvert.DeserializeObject<TaskStatus>(status) == TaskStatus.Canceled)
+                        try
                         {
-                            tokenSource.Cancel();
-                            return;
+                            tokenSource.Token.ThrowIfCancellationRequested();
+                            var status = await _distributedCache.GetStringAsync(key, tokenSource.Token);
+                            if (!string.IsNullOrEmpty(status) && JsonConvert.DeserializeObject<TaskStatus>(status) == TaskStatus.Canceled)
+                            {
+                                tokenSource.Cancel();
+                                return;
+                            }
+                            await heartbeat(tokenSource.Token);
                         }
-                        await _distributedCache.SetStringAsync(key, running, new DistributedCacheEntryOptions
-                        {
-                            AbsoluteExpirationRelativeToNow = expirationTime
-                        });
+                        catch (OperationCanceledException) { }
                     },
                     state: null,
                     dueTime: 0,
