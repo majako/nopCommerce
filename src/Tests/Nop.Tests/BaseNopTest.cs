@@ -259,6 +259,7 @@ namespace Nop.Tests
             services.AddSingleton<IMemoryCache>(memoryCache);
             services.AddSingleton<IStaticCacheManager, MemoryCacheManager>();
             services.AddSingleton<ILocker, MemoryCacheLocker>();
+            services.AddSingleton<MemoryCacheLocker>();
 
             var distributedCache = new Mock<IDistributedCache>();
             services.AddSingleton(distributedCache.Object);

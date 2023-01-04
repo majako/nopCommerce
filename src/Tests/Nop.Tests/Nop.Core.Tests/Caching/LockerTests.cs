@@ -16,7 +16,7 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
         [OneTimeSetUp]
         public void Setup()
         {
-            _memCacheLocker = GetService<ILocker>();
+            _memCacheLocker = GetService<MemoryCacheLocker>();
             _distCacheLocker = GetService<DistributedCacheLocker>();
         }
 
