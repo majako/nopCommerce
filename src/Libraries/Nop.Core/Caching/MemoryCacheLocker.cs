@@ -27,7 +27,7 @@ namespace Nop.Core.Caching
 
         #region Utilities
 
-        private async Task<bool> RunAsync(string key, TimeSpan expirationTime, Func<CancellationToken, Task> action, CancellationTokenSource cancellationTokenSource = default)
+        private async Task<bool> RunAsync(string key, TimeSpan? expirationTime, Func<CancellationToken, Task> action, CancellationTokenSource cancellationTokenSource = default)
         {
             var started = false;
             try
@@ -35,12 +35,13 @@ namespace Nop.Core.Caching
                 var tokenSource = _memoryCache.GetOrCreate(key, entry => new Lazy<CancellationTokenSource>(() =>
                 {
                     entry.AbsoluteExpirationRelativeToNow = expirationTime;
+                    entry.SetPriority(CacheItemPriority.NeverRemove);
                     started = true;
                     return cancellationTokenSource ?? new();
                 }, true)).Value;
 
                 if (started)
-                  await action(tokenSource.Token);
+                    await action(tokenSource.Token);
             }
             catch (OperationCanceledException) { }
             finally
@@ -62,7 +63,9 @@ namespace Nop.Core.Caching
 
         public async Task RunWithHeartbeatAsync(string key, TimeSpan expirationTime, TimeSpan heartbeatInterval, Func<CancellationToken, Task> action, CancellationTokenSource cancellationTokenSource = default)
         {
-            await RunAsync(key, expirationTime, action, cancellationTokenSource);
+            // We ignore expirationTime and heartbeatInterval here, as the cache is not shared with other instances,
+            // and will be cleared on system failure anyway. The task is guaranteed to still be running as long as it is in the cache.
+            await RunAsync(key, null, action, cancellationTokenSource);
         }
 
         public Task CancelTaskAsync(string key, TimeSpan expirationTime)

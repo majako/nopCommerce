@@ -124,31 +124,31 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
             var heartbeat = TimeSpan.FromMilliseconds(100);
             var delay = TimeSpan.FromSeconds(5);
 
-            var cancelled = false;
-            async Task action(CancellationToken token)
-            {
-                await locker.RunWithHeartbeatAsync(
-                    key,
-                    expiration,
-                    heartbeat,
-                    _ =>
-                    {
-                        Assert.Fail("Action in progress");
-                        return Task.CompletedTask;
-                    });
-
-                try
-                {
-                    await Task.Delay(delay, token);
-                }
-                catch
-                {
-                    cancelled = true;
-                }
-            }
-
             async Task testAsync(Func<Task> cancel, CancellationTokenSource tokenSource = default)
             {
+                var cancelled = false;
+                async Task action(CancellationToken token)
+                {
+                    await locker.RunWithHeartbeatAsync(
+                        key,
+                        expiration,
+                        heartbeat,
+                        _ =>
+                        {
+                            Assert.Fail("Action in progress");
+                            return Task.CompletedTask;
+                        });
+
+                    try
+                    {
+                        await Task.Delay(delay, token);
+                    }
+                    catch
+                    {
+                        cancelled = true;
+                    }
+                }
+
                 var task = locker.RunWithHeartbeatAsync(key, expiration, heartbeat, action, tokenSource);
                 (await locker.IsTaskRunningAsync(key)).Should().BeTrue();
                 await cancel();
@@ -159,7 +159,7 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
 
             await testAsync(() => locker.CancelTaskAsync(key, expiration));
             var cancellationTokenSource = new CancellationTokenSource();
-            await testAsync(() => new Task(cancellationTokenSource.Cancel), cancellationTokenSource);
+            await testAsync(() => Task.Run(cancellationTokenSource.Cancel), cancellationTokenSource);
         }
 
         private static Task FailingAction()

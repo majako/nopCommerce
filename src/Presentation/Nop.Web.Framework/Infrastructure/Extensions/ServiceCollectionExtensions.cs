@@ -174,6 +174,15 @@ namespace Nop.Web.Framework.Infrastructure.Extensions
                     services.AddStackExchangeRedisCache(options =>
                     {
                         options.Configuration = distributedCacheConfig.ConnectionString;
+                        options.InstanceName = distributedCacheConfig.InstanceName ?? string.Empty;
+                    });
+                    break;
+
+                case DistributedCacheType.RedisSynchronizedMemory:
+                    services.AddStackExchangeRedisCache(options =>
+                    {
+                        options.Configuration = distributedCacheConfig.ConnectionString;
+                        options.InstanceName = distributedCacheConfig.InstanceName ?? string.Empty;
                     });
                     break;
             }
