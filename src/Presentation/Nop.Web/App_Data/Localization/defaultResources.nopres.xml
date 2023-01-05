@@ -4522,7 +4522,7 @@
     <Value>Instance name</Value>
   </LocaleResource>
   <LocaleResource Name="Admin.Configuration.AppSettings.DistributedCache.InstanceName.Hint">
-    <Value>Specify the instance name (empty by default)</Value>
+    <Value>Specify the instance name (by default "nopCommerce")</Value>
   </LocaleResource>
   <LocaleResource Name="Admin.Configuration.AppSettings.EnvironmentVariablesWarning">
     <Value>Warning! The current setting value is overridden in environment variables</Value>
