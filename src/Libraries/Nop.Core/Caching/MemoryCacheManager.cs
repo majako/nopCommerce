@@ -200,45 +200,6 @@ namespace Nop.Core.Caching
         }
 
         /// <summary>
-        /// Perform asynchronous action with exclusive in-memory lock
-        /// </summary>
-        /// <param name="resource">The key we are locking on</param>
-        /// <param name="expirationTime">The time after which the lock will automatically be expired</param>
-        /// <param name="action">Action to be performed with locking</param>
-        /// <returns>True if lock was acquired and action was performed; otherwise false</returns>
-        public async Task<bool> PerformActionWithLockAsync(string resource, TimeSpan expirationTime, Func<Task> action)
-        {
-            //ensure that lock is acquired
-            var isSet = await _memoryCache.GetOrCreateAsync(resource, cacheEntry =>
-                {
-                    cacheEntry.AbsoluteExpiration = DateTimeOffset.Now;
-                    return Task.FromResult(false);
-                });
-
-            if (isSet)
-                return false;
-
-            try
-            {
-                await _memoryCache.GetOrCreateAsync(resource, cacheEntry =>
-                {
-                    cacheEntry.AbsoluteExpirationRelativeToNow = expirationTime;
-                    return Task.FromResult(true);
-                });
-
-                //perform action
-                await action();
-
-                return true;
-            }
-            finally
-            {
-                //release lock even if action fails
-                _memoryCache.Remove(resource);
-            }
-        }
-
-        /// <summary>
         /// Remove items by cache key prefix
         /// </summary>
         /// <param name="prefix">Cache key prefix</param>
@@ -246,23 +207,13 @@ namespace Nop.Core.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
-            RemoveByPrefix(prefix, prefixParameters);
-
-            return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Remove items by cache key prefix
-        /// </summary>
-        /// <param name="prefix">Cache key prefix</param>
-        /// <param name="prefixParameters">Parameters to create cache key prefix</param>
-        public void RemoveByPrefix(string prefix, params object[] prefixParameters)
-        {
             prefix = PrepareKeyPrefix(prefix, prefixParameters);
 
             _prefixes.TryRemove(prefix, out var tokenSource);
             tokenSource?.Cancel();
             tokenSource?.Dispose();
+
+            return Task.CompletedTask;
         }
 
         /// <summary>

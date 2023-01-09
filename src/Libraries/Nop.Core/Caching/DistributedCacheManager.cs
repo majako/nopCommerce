@@ -40,6 +40,7 @@ namespace Nop.Core.Caching
         protected void ClearInstanceData()
         {
             _perRequestCache.Clear();
+            _locksByKey.Clear();
         }
 
         /// <summary>
@@ -49,8 +50,12 @@ namespace Nop.Core.Caching
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
         protected void RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
         {
-            prefix = PrepareKeyPrefix(prefix, prefixParameters);
-            _perRequestCache.RemoveByPrefix(prefix);
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
+            _perRequestCache.RemoveByPrefix(prefix_);
+            var keys = _locksByKey.Keys
+                .Where(key => key.StartsWith(prefix_, StringComparison.InvariantCultureIgnoreCase));
+            foreach (var key in keys)
+                _locksByKey.TryRemove(key, out _);
         }
 
         private static async Task<CacheLock> AcquireLockAsync(string key)
@@ -146,7 +151,7 @@ namespace Nop.Core.Caching
             await _distributedCache.RemoveAsync(key);
             if (removeFromPerRequestCache)
                 _perRequestCache.Remove(key);
-            _locksByKey.Remove(key, out _);
+            _locksByKey.TryRemove(key, out _);
             cacheLock.Cancel();
         }
 
@@ -212,7 +217,8 @@ namespace Nop.Core.Caching
         }
 
         /// <summary>
-        /// Remove items by cache key prefix
+        /// Remove items by cache key prefix. The default implementation is rather inefficient, so it is recommended for
+        /// subclasses to override this method.
         /// </summary>
         /// <param name="prefix">Cache key prefix</param>
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
@@ -220,22 +226,24 @@ namespace Nop.Core.Caching
         public virtual async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
-            RemoveByPrefixInstanceData(prefix_);
 
-            // _keys is a ConcurrentDictionary, so we don't need to worry about modifying it while iterating over it
+            // _locksByKey is a ConcurrentDictionary, so we don't need to worry about modifying it while iterating over it
             await Task.WhenAll(_locksByKey.Keys
                 .Where(key => key.StartsWith(prefix_, StringComparison.InvariantCultureIgnoreCase))
                 .Select(key => RemoveAsync(key, false)));
+
+            RemoveByPrefixInstanceData(prefix_);
         }
 
         /// <summary>
-        /// Clear all cache data
+        /// Clear all cache data. The default implementation is rather inefficient, so it is recommended for
+        /// subclasses to override this method.
         /// </summary>
         /// <returns>A task that represents the asynchronous operation</returns>
         public virtual async Task ClearAsync()
         {
+            await Task.WhenAll(_locksByKey.Keys.Select(key => RemoveAsync(key, false)));
             ClearInstanceData();
-            await Task.WhenAll(_locksByKey.Keys.Select(key => RemoveAsync(key)));
         }
 
         public void Dispose()

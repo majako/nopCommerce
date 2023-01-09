@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 namespace Nop.Core.Caching
 {
@@ -21,6 +20,13 @@ namespace Nop.Core.Caching
 
         #region Utilities
 
+        // TODO: this should *really* be implemented using a trie (prefix tree) to avoid
+        // looping over all keys
+        private IEnumerable<string> GetKeysByPrefix(string prefix)
+        {
+            return Keys.Where(key => key.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase));
+        }
+
         #endregion
 
         #region Methods
@@ -28,14 +34,6 @@ namespace Nop.Core.Caching
         public virtual void Clear()
         {
             _items.Clear();
-        }
-
-        public virtual IEnumerable<string> GetKeysByPrefix(string prefix)
-        {
-            var regex = new Regex(prefix,
-                RegexOptions.Singleline | RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-            return Keys.Where(key => regex.IsMatch(key));
         }
 
         /// <summary>

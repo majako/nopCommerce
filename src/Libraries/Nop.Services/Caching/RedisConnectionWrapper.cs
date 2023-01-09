@@ -59,7 +59,7 @@ namespace Nop.Services.Caching
         }
 
         /// <summary>
-        /// Get connection to Redis servers
+        /// Get connection to Redis servers, and reconnects if necessary
         /// </summary>
         /// <returns></returns>
         protected async Task<IConnectionMultiplexer> GetConnectionAsync()
@@ -120,7 +120,7 @@ namespace Nop.Services.Caching
         }
 
         /// <summary>
-        /// Gets all endpoints defined on the server
+        /// Gets a subscriber for the server
         /// </summary>
         /// <returns>Array of endpoints</returns>
         public async Task<ISubscriber> GetSubscriberAsync()
