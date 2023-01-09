@@ -97,28 +97,27 @@ namespace Nop.Web.Framework.Infrastructure
                 switch (distributedCacheConfig.DistributedCacheType)
                 {
                     case DistributedCacheType.Memory:
-                        services.AddScoped<ILocker, MemoryDistributedCacheManager>();
                         services.AddScoped<IStaticCacheManager, MemoryDistributedCacheManager>();
                         break;
                     case DistributedCacheType.SqlServer:
-                        services.AddScoped<ILocker, MsSqlServerCacheManager>();
                         services.AddScoped<IStaticCacheManager, MsSqlServerCacheManager>();
                         break;
                     case DistributedCacheType.Redis:
-                        services.AddScoped<ILocker, RedisCacheManager>();
+                        services.AddSingleton<RedisConnectionWrapper>();
                         services.AddScoped<IStaticCacheManager, RedisCacheManager>();
                         break;
                     case DistributedCacheType.RedisSynchronizedMemory:
-                        services.AddScoped<ILocker, RedisCacheManager>();
+                        services.AddSingleton<RedisConnectionWrapper>();
                         services.AddSingleton<IStaticCacheManager, MemoryCacheManager>(services =>
                             new MemoryCacheManager(
                                 appSettings,
                                 new RedisSynchronizedMemoryCache(
                                     services.GetRequiredService<IMemoryCache>(),
-                                    services.GetRequiredService<IOptions<RedisCacheOptions>>(),
+                                    services.GetRequiredService<RedisConnectionWrapper>(),
                                     MemoryCacheManager.LOCK_PREFIX)));
                         break;
                 }
+                services.AddSingleton<ILocker, DistributedCacheLocker>();
             }
             else
             {

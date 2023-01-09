@@ -15,7 +15,7 @@ namespace Nop.Services.Caching
     {
         #region Fields
 
-        private readonly SemaphoreSlim _lock = new(1, 1);
+        private readonly SemaphoreSlim _connectionLock = new(1, 1);
         private volatile IConnectionMultiplexer _connection;
         private readonly RedisCacheOptions _options;
 
@@ -67,7 +67,7 @@ namespace Nop.Services.Caching
             if (_connection?.IsConnected == true)
                 return _connection;
 
-            await _lock.WaitAsync();
+            await _connectionLock.WaitAsync();
             try
             {
                 if (_connection?.IsConnected == true)
@@ -81,7 +81,7 @@ namespace Nop.Services.Caching
             }
             finally
             {
-                _lock.Release();
+                _connectionLock.Release();
             }
 
             return _connection;

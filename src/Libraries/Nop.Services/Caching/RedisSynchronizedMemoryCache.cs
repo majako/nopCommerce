@@ -3,13 +3,11 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Caching.StackExchangeRedis;
-using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 namespace Nop.Services.Caching
 {
-    public class RedisSynchronizedMemoryCache : IMemoryCache, IDisposable
+    public class RedisSynchronizedMemoryCache : IMemoryCache
     {
         private static readonly string _processId;
 
@@ -18,9 +16,6 @@ namespace Nop.Services.Caching
         private bool _disposed;
         private readonly IMemoryCache _memoryCache;
         private readonly string _ignorePrefix;
-
-        private IDatabase RedisDb => _connection.GetDatabase();
-        private string Channel => $"__change@{RedisDb.Database}__{Instance}__:";
 
 
         static RedisSynchronizedMemoryCache()
@@ -41,23 +36,31 @@ namespace Nop.Services.Caching
             _memoryCache = memoryCache;
             _ignorePrefix = ignorePrefix;
             _connection = connectionWrapper;
-            _ = SubscribeAsync();
+            SubscribeAsync().Wait();
+        }
+
+        private async Task<string> GetChannelAsync()
+        {
+            var db = await _connection.GetDatabaseAsync();
+            return $"__change@{db.Database}__{_connection.Instance}__:";
         }
 
         private async Task SubscribeAsync()
         {
-            (await _connection.GetSubscriber()).Subscribe(Channel + "*", (channel, value) =>
+            var channel = await GetChannelAsync();
+            (await _connection.GetSubscriberAsync()).Subscribe(channel + "*", (redisChannel, value) =>
             {
                 if (value != _processId)
-                    _memoryCache.Remove(((string)channel).Replace(Channel, ""));
+                    _memoryCache.Remove(((string)redisChannel).Replace(channel, ""));
             });
         }
 
         private async Task PublishChangeEventAsync(object key)
         {
+            var channel = await GetChannelAsync();
             var stringKey = key.ToString();
             if (string.IsNullOrEmpty(_ignorePrefix) || !stringKey.StartsWith(_ignorePrefix))
-                await Subscriber.PublishAsync($"{Channel}{stringKey}", _processId, CommandFlags.FireAndForget);
+                await (await _connection.GetSubscriberAsync()).PublishAsync($"{channel}{stringKey}", _processId, CommandFlags.FireAndForget);
         }
 
         private void OnEviction(object key, object value, EvictionReason reason, object state)
@@ -91,13 +94,14 @@ namespace Nop.Services.Caching
             return _memoryCache.TryGetValue(key, out value);
         }
 
-        protected virtual void Dispose(bool disposing)
+        protected virtual async Task DisposeAsync(bool disposing)
         {
             if (!_disposed)
             {
                 if (disposing)
                 {
-                    Subscriber.Unsubscribe(Channel + "*");
+                    var channel = await GetChannelAsync();
+                    (await _connection.GetSubscriberAsync()).Unsubscribe(channel + "*");
                 }
                 _disposed = true;
             }
@@ -105,7 +109,7 @@ namespace Nop.Services.Caching
 
         public void Dispose()
         {
-            Dispose(disposing: true);
+            DisposeAsync(disposing: true).Wait();
             GC.SuppressFinalize(this);
         }
     }
