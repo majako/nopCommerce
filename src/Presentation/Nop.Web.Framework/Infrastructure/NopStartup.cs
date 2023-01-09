@@ -2,9 +2,12 @@
 using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 using Nop.Core;
 using Nop.Core.Caching;
 using Nop.Core.Configuration;
@@ -105,11 +108,21 @@ namespace Nop.Web.Framework.Infrastructure
                         services.AddScoped<ILocker, RedisCacheManager>();
                         services.AddScoped<IStaticCacheManager, RedisCacheManager>();
                         break;
+                    case DistributedCacheType.RedisSynchronizedMemory:
+                        services.AddScoped<ILocker, RedisCacheManager>();
+                        services.AddSingleton<IStaticCacheManager, MemoryCacheManager>(services =>
+                            new MemoryCacheManager(
+                                appSettings,
+                                new RedisSynchronizedMemoryCache(
+                                    services.GetRequiredService<IMemoryCache>(),
+                                    services.GetRequiredService<IOptions<RedisCacheOptions>>(),
+                                    MemoryCacheManager.LOCK_PREFIX)));
+                        break;
                 }
             }
             else
             {
-                services.AddSingleton<ILocker, MemoryCacheManager>();
+                services.AddSingleton<ILocker, MemoryCacheLocker>();
                 services.AddSingleton<IStaticCacheManager, MemoryCacheManager>();
             }
 
