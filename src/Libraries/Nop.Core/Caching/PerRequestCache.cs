@@ -1,7 +1,7 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Nop.Core.Infrastructure;
 
 namespace Nop.Core.Caching
 {
@@ -12,9 +12,9 @@ namespace Nop.Core.Caching
     {
         #region Fields
 
-        private readonly ConcurrentDictionary<string, object> _items = new();
+        private readonly ConcurrentTrie<object> _items = new();
 
-        public ICollection<string> Keys => _items.Keys;
+        public IEnumerable<string> Keys => _items.Keys;
 
         #endregion
 
@@ -63,7 +63,7 @@ namespace Nop.Core.Caching
         public virtual void Set(string key, object data)
         {
             if (data != null)
-                _items.AddOrUpdate(key, data, (k, oldValue) => data);
+                _items.Set(key, data);
         }
 
         /// <summary>
@@ -82,7 +82,7 @@ namespace Nop.Core.Caching
         /// <param name="key">Key of cached item</param>
         public virtual void Remove(string key)
         {
-            _items.Remove(key, out _);
+            _items.TryRemove(key);
         }
 
         /// <summary>
@@ -91,8 +91,7 @@ namespace Nop.Core.Caching
         /// <param name="prefix">String key prefix</param>
         public virtual void RemoveByPrefix(string prefix)
         {
-            foreach (var key in GetKeysByPrefix(prefix))
-                _items.Remove(key, out _);
+            _items.Prune(prefix);
         }
 
         #endregion

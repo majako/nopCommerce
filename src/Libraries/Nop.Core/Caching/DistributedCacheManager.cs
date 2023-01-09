@@ -1,11 +1,10 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Distributed;
 using Newtonsoft.Json;
 using Nop.Core.Configuration;
+using Nop.Core.Infrastructure;
 
 namespace Nop.Core.Caching
 {
@@ -16,7 +15,7 @@ namespace Nop.Core.Caching
     {
         #region Fields
 
-        private static readonly ConcurrentDictionary<string, Lazy<CacheLock>> _locksByKey = new();
+        private static readonly ConcurrentTrie<Lazy<CacheLock>> _locksByKey = new();
         private readonly IDistributedCache _distributedCache;
         private readonly PerRequestCache _perRequestCache = new();
 
@@ -52,17 +51,14 @@ namespace Nop.Core.Caching
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
             _perRequestCache.RemoveByPrefix(prefix_);
-            var keys = _locksByKey.Keys
-                .Where(key => key.StartsWith(prefix_, StringComparison.InvariantCultureIgnoreCase));
-            foreach (var key in keys)
-                _locksByKey.TryRemove(key, out _);
+            _locksByKey.Prune(prefix_);
         }
 
         private static async Task<CacheLock> AcquireLockAsync(string key)
         {
             while (true)
             {
-                var cacheLock = _locksByKey.GetOrAdd(key, _ => new Lazy<CacheLock>(() => new(), true)).Value;
+                var cacheLock = _locksByKey.GetOrAdd(key, () => new Lazy<CacheLock>(() => new(), true)).Value;
                 try
                 {
                     await cacheLock.WaitAsync();
@@ -151,7 +147,7 @@ namespace Nop.Core.Caching
             await _distributedCache.RemoveAsync(key);
             if (removeFromPerRequestCache)
                 _perRequestCache.Remove(key);
-            _locksByKey.TryRemove(key, out _);
+            _locksByKey.TryRemove(key);
             cacheLock.Cancel();
         }
 
