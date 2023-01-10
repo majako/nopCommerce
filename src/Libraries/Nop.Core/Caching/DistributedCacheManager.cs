@@ -49,11 +49,11 @@ namespace Nop.Core.Caching
         /// <param name="prefix">Cache key prefix</param>
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
         /// <returns>The removed keys</returns>
-        protected IEnumerable<string> RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
+        protected async Task<IEnumerable<string>> RemoveByPrefixInstanceDataAsync(string prefix, params object[] prefixParameters)
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
             _perRequestCache.Prune(prefix_, out _);
-            return _cacheLockManager.RemoveByPrefix(prefix_);
+            return await _cacheLockManager.RemoveByPrefixAsync(prefix_);
         }
 
         /// <summary>

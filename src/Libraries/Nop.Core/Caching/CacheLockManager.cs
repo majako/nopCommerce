@@ -11,12 +11,12 @@ namespace Nop.Core.Caching
         private readonly ConcurrentTrie<Lazy<CacheLock>> _locksByKey = new();
 
         public IEnumerable<string> Keys => _locksByKey.Keys;
-        
+
         public async Task<CacheLock> AcquireLockAsync(string key)
         {
             while (true)
             {
-                var cacheLock = _locksByKey.GetOrAdd(key, () => new Lazy<CacheLock>(() => new(), true)).Value;
+                var cacheLock = _locksByKey.GetOrAdd(key, () => new Lazy<CacheLock>(true)).Value;
                 try
                 {
                     await cacheLock.WaitAsync();
@@ -32,16 +32,7 @@ namespace Nop.Core.Caching
         {
             if (_locksByKey.TryGetValue(key, out var lazy))
             {
-                try
-                {
-                    await lazy.Value.WaitAsync();   // let current tasks finish, then lock
-                    _locksByKey.TryRemove(key);
-                    lazy.Value.Cancel();
-                    // don't release, rely on cancellation token and let the GC take care of the semaphore
-                }
-                catch   // someone else cancelled first
-                {
-                }
+                await CancelAsync(lazy.Value, () => _locksByKey.TryRemove(key));
             }
         }
 
@@ -50,11 +41,25 @@ namespace Nop.Core.Caching
             _locksByKey.Clear();
         }
 
-        public IEnumerable<string> RemoveByPrefix(string prefix)
+        public async Task<IEnumerable<string>> RemoveByPrefixAsync(string prefix)
         {
-            return _locksByKey.Prune(prefix, out var subtree)
-                ? subtree.Keys
-                : Enumerable.Empty<string>();
+            if (!_locksByKey.Prune(prefix, out var subtree))
+                return Enumerable.Empty<string>();
+            await Task.WhenAll(subtree.Values.Select(v => CancelAsync(v.Value)));
+            return subtree.Keys;
+        }
+
+        private static async Task CancelAsync(CacheLock cacheLock, Action action = null)
+        {
+            try
+            {
+                await cacheLock.WaitAsync();   // let current tasks finish, then lock
+                action?.Invoke();
+                cacheLock.Cancel();
+            }
+            catch   // someone else cancelled first
+            {
+            }
         }
     }
 }

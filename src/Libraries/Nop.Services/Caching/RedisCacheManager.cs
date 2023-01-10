@@ -66,7 +66,7 @@ namespace Nop.Services.Caching
                 db.KeyDelete(keys.ToArray());
             }
 
-            RemoveByPrefixInstanceData(prefix);
+            await RemoveByPrefixInstanceDataAsync(prefix);
         }
 
         /// <summary>

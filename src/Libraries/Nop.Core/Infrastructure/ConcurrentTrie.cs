@@ -16,7 +16,8 @@ namespace Nop.Core.Infrastructure
 
         private readonly TrieNode _root;
 
-        public IEnumerable<string> Keys => Search(string.Empty);
+        public IEnumerable<string> Keys => Search(string.Empty).Select(kv => kv.Key);
+        public IEnumerable<TValue> Values => Search(string.Empty).Select(kv => kv.Value);
 
 
         public ConcurrentTrie() : this(new())
@@ -54,22 +55,22 @@ namespace Nop.Core.Infrastructure
             _root.Children.Clear();
         }
 
-        public IEnumerable<string> Search(string prefix)
+        public IEnumerable<KeyValuePair<string, TValue>> Search(string prefix)
         {
             if (prefix is null)
                 throw new ArgumentNullException(nameof(prefix));
 
             if (!Find(prefix, out var node))
-                return Enumerable.Empty<string>();
+                return Enumerable.Empty<KeyValuePair<string, TValue>>();
 
-            static IEnumerable<string> traverse(TrieNode n, string s)
+            static IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
                 if (n.IsTerminal)
-                    yield return s;
+                    yield return new KeyValuePair<string, TValue>(s, n.Value);
                 foreach (var (c, child) in n.Children)
                 {
-                    foreach (var s_ in traverse(child.Value, s + c))
-                        yield return s_;
+                    foreach (var kv in traverse(child.Value, s + c))
+                        yield return kv;
                 }
             }
             return traverse(node, prefix.ToLowerInvariant());

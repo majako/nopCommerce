@@ -26,7 +26,7 @@ namespace Nop.Services.Caching
         public override async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
-            var removedKeys = RemoveByPrefixInstanceData(prefix_);
+            var removedKeys = await RemoveByPrefixInstanceDataAsync(prefix_);
             await Task.WhenAll(removedKeys.Select(key => RemoveAsync(key, false)));
         }
     }

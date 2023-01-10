@@ -69,7 +69,7 @@ namespace Nop.Services.Caching
 
             await PerformActionAsync(command, new SqlParameter("Prefix", SqlDbType.NVarChar) { Value = prefix });
 
-            RemoveByPrefixInstanceData(prefix);
+            await RemoveByPrefixInstanceDataAsync(prefix);
         }
 
         /// <summary>
