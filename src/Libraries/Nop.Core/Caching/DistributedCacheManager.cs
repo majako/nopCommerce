@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Distributed;
@@ -17,7 +18,7 @@ namespace Nop.Core.Caching
 
         private static readonly ConcurrentTrie<Lazy<CacheLock>> _locksByKey = new();
         private readonly IDistributedCache _distributedCache;
-        private readonly PerRequestCache _perRequestCache = new();
+        private readonly ConcurrentTrie<object> _perRequestCache = new();
 
         #endregion
 
@@ -47,11 +48,13 @@ namespace Nop.Core.Caching
         /// </summary>
         /// <param name="prefix">Cache key prefix</param>
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
-        protected void RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
+        /// <returns>The removed keys</returns>
+        protected IEnumerable<string> RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
-            _perRequestCache.RemoveByPrefix(prefix_);
-            _locksByKey.Prune(prefix_);
+            _perRequestCache.Prune(prefix_, out _);
+            _locksByKey.Prune(prefix_, out var subtree);
+            return subtree.Keys;
         }
 
         private static async Task<CacheLock> AcquireLockAsync(string key)
@@ -117,8 +120,8 @@ namespace Nop.Core.Caching
                 T data = default;
                 if (!forceOverwrite)
                 {
-                    if (_perRequestCache.TryGetValue(key.Key, out data))
-                        return data;
+                    if (_perRequestCache.TryGetValue(key.Key, out var value))
+                        return (T)value;
                     var json = await _distributedCache.GetStringAsync(key.Key);
                     if (!string.IsNullOrEmpty(json))
                     {
@@ -146,7 +149,7 @@ namespace Nop.Core.Caching
             var cacheLock = await AcquireLockAsync(key);
             await _distributedCache.RemoveAsync(key);
             if (removeFromPerRequestCache)
-                _perRequestCache.Remove(key);
+                _perRequestCache.TryRemove(key);
             _locksByKey.TryRemove(key);
             cacheLock.Cancel();
         }
@@ -178,8 +181,8 @@ namespace Nop.Core.Caching
         /// </returns>
         public async Task<T> GetAsync<T>(CacheKey key, Func<Task<T>> acquire)
         {
-            if (_perRequestCache.TryGetValue(key.Key, out T data))
-                return data;
+            if (_perRequestCache.TryGetValue(key.Key, out var data))
+                return (T)data;
             var (isSet, item) = await TryGetItemAsync<T>(key.Key);
             return isSet ? item : await GetOrSetAsync(key, acquire, false);
         }
@@ -222,13 +225,8 @@ namespace Nop.Core.Caching
         public virtual async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
-
-            // _locksByKey is a ConcurrentDictionary, so we don't need to worry about modifying it while iterating over it
-            await Task.WhenAll(_locksByKey.Keys
-                .Where(key => key.StartsWith(prefix_, StringComparison.InvariantCultureIgnoreCase))
-                .Select(key => RemoveAsync(key, false)));
-
-            RemoveByPrefixInstanceData(prefix_);
+            var removedKeys = RemoveByPrefixInstanceData(prefix_);
+            await Task.WhenAll(removedKeys.Select(key => RemoveAsync(key, false)));
         }
 
         /// <summary>
