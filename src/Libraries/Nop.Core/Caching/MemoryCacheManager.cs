@@ -14,15 +14,13 @@ namespace Nop.Core.Caching
     /// </summary>
     public partial class MemoryCacheManager : CacheKeyService, IStaticCacheManager
     {
-        public const string LOCK_PREFIX = "MemoryCacheManager.Lock";
-
         #region Fields
 
         // Flag: Has Dispose already been called?
         private bool _disposed;
 
         private readonly IMemoryCache _memoryCache;
-
+        private readonly CacheLockManager _cacheLockManager;
         private static readonly ConcurrentDictionary<string, CancellationTokenSource> _prefixes = new();
         private static CancellationTokenSource _clearToken = new();
 
@@ -30,55 +28,22 @@ namespace Nop.Core.Caching
 
         #region Ctor
 
-        public MemoryCacheManager(AppSettings appSettings, IMemoryCache memoryCache) : base(appSettings)
+        public MemoryCacheManager(AppSettings appSettings, IMemoryCache memoryCache, CacheLockManager cacheLockManager) : base(appSettings)
         {
             _memoryCache = memoryCache;
+            _cacheLockManager = cacheLockManager;
         }
 
         #endregion
 
         #region Utilities
 
-        private static string GetLockKey(string key)
-        {
-            return $"{LOCK_PREFIX}-{key}";
-        }
-
-        private async Task<CacheLock> AcquireLockAsync(string key)
-        {
-            while (true)
-            {
-                var cacheLock = _memoryCache.GetOrCreate(GetLockKey(key), _ => new Lazy<CacheLock>(() => new(), true)).Value;
-                try
-                {
-                    await cacheLock.WaitAsync();
-                    return cacheLock;
-                }
-                catch   // cacheLock was removed while waiting, acquire a new instance
-                {
-                }
-            }
-        }
-
         private async void OnEvictionAsync(object key, object value, EvictionReason reason, object state)
         {
             if (reason == EvictionReason.Replaced)
                 return;
 
-            var lockKey = GetLockKey(key as string);
-            if (_memoryCache.TryGetValue(lockKey, out Lazy<CacheLock> lazy))
-            {
-                try
-                {
-                    await lazy.Value.WaitAsync();   // let current tasks finish, then lock
-                    _memoryCache.Remove(lockKey);
-                    lazy.Value.Cancel();
-                    // don't release, rely on cancellation token and let the GC take care of the semaphore
-                }
-                catch   // someone else cancelled first
-                {
-                }
-            }
+            await _cacheLockManager.RemoveLockAsync(key as string);
         }
 
         /// <summary>
@@ -111,7 +76,7 @@ namespace Nop.Core.Caching
             if ((key?.CacheTime ?? 0) <= 0)
                 return await acquire();
 
-            var cacheLock = await AcquireLockAsync(key.Key);
+            var cacheLock = await _cacheLockManager.AcquireLockAsync(key.Key);
             try
             {
                 if (!forceOverwrite && _memoryCache.TryGetValue(key.Key, out T data))
@@ -140,7 +105,7 @@ namespace Nop.Core.Caching
         public async Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
         {
             var key = PrepareKey(cacheKey, cacheKeyParameters);
-            var cacheLock = await AcquireLockAsync(key.Key);
+            var cacheLock = await _cacheLockManager.AcquireLockAsync(key.Key);
             try
             {
                 _memoryCache.Remove(key.Key);
@@ -207,9 +172,9 @@ namespace Nop.Core.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
-            prefix = PrepareKeyPrefix(prefix, prefixParameters);
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
 
-            _prefixes.TryRemove(prefix, out var tokenSource);
+            _prefixes.TryRemove(prefix_, out var tokenSource);
             tokenSource?.Cancel();
             tokenSource?.Dispose();
 

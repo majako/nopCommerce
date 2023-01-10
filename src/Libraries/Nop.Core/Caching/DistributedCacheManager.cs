@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Distributed;
 using Newtonsoft.Json;
@@ -16,17 +15,18 @@ namespace Nop.Core.Caching
     {
         #region Fields
 
-        protected static readonly ConcurrentTrie<Lazy<CacheLock>> _locksByKey = new();
         protected readonly IDistributedCache _distributedCache;
+        protected readonly CacheLockManager _cacheLockManager;
         private readonly ConcurrentTrie<object> _perRequestCache = new();
 
         #endregion
 
         #region Ctor
 
-        public DistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache) : base(appSettings)
+        public DistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache, CacheLockManager cacheLockManager) : base(appSettings)
         {
             _distributedCache = distributedCache;
+            _cacheLockManager = cacheLockManager;
         }
 
         #endregion
@@ -40,7 +40,7 @@ namespace Nop.Core.Caching
         protected void ClearInstanceData()
         {
             _perRequestCache.Clear();
-            _locksByKey.Clear();
+            _cacheLockManager.Clear();
         }
 
         /// <summary>
@@ -53,24 +53,7 @@ namespace Nop.Core.Caching
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
             _perRequestCache.Prune(prefix_, out _);
-            _locksByKey.Prune(prefix_, out var subtree);
-            return subtree.Keys;
-        }
-
-        private static async Task<CacheLock> AcquireLockAsync(string key)
-        {
-            while (true)
-            {
-                var cacheLock = _locksByKey.GetOrAdd(key, () => new Lazy<CacheLock>(() => new(), true)).Value;
-                try
-                {
-                    await cacheLock.WaitAsync();
-                    return cacheLock;
-                }
-                catch   // cacheLock was removed while waiting, acquire a new instance
-                {
-                }
-            }
+            return _cacheLockManager.RemoveByPrefix(prefix_);
         }
 
         /// <summary>
@@ -89,7 +72,7 @@ namespace Nop.Core.Caching
 
         private async Task<(bool isSet, T item)> TryGetItemAsync<T>(string key)
         {
-            var cacheLock = await AcquireLockAsync(key);
+            var cacheLock = await _cacheLockManager.AcquireLockAsync(key);
             try
             {
                 var json = await _distributedCache.GetStringAsync(key);
@@ -114,7 +97,7 @@ namespace Nop.Core.Caching
                 return await acquire();
 
             var setTask = Task.CompletedTask;
-            var cacheLock = await AcquireLockAsync(key.Key);
+            var cacheLock = await _cacheLockManager.AcquireLockAsync(key.Key);
             try
             {
                 T data = default;
@@ -146,11 +129,11 @@ namespace Nop.Core.Caching
 
         protected async Task RemoveAsync(string key, bool removeFromPerRequestCache = true)
         {
-            var cacheLock = await AcquireLockAsync(key);
+            var cacheLock = await _cacheLockManager.AcquireLockAsync(key);
             await _distributedCache.RemoveAsync(key);
             if (removeFromPerRequestCache)
                 _perRequestCache.TryRemove(key);
-            _locksByKey.TryRemove(key);
+            await _cacheLockManager.RemoveLockAsync(key);
             cacheLock.Cancel();
         }
 

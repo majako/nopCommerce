@@ -21,8 +21,8 @@ namespace Nop.Services.Caching
 
         #region Ctor
 
-        public MsSqlServerCacheManager(AppSettings appSettings, IDistributedCache distributedCache) : base(appSettings,
-            distributedCache)
+        public MsSqlServerCacheManager(AppSettings appSettings, IDistributedCache distributedCache, CacheLockManager cacheLockManager)
+        : base(appSettings, distributedCache, cacheLockManager)
         {
             _distributedCacheConfig = appSettings.Get<DistributedCacheConfig>();
         }
