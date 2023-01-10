@@ -16,8 +16,8 @@ namespace Nop.Core.Caching
     {
         #region Fields
 
-        private static readonly ConcurrentTrie<Lazy<CacheLock>> _locksByKey = new();
-        private readonly IDistributedCache _distributedCache;
+        protected static readonly ConcurrentTrie<Lazy<CacheLock>> _locksByKey = new();
+        protected readonly IDistributedCache _distributedCache;
         private readonly ConcurrentTrie<object> _perRequestCache = new();
 
         #endregion
@@ -144,7 +144,7 @@ namespace Nop.Core.Caching
             }
         }
 
-        private async Task RemoveAsync(string key, bool removeFromPerRequestCache = true)
+        protected async Task RemoveAsync(string key, bool removeFromPerRequestCache = true)
         {
             var cacheLock = await AcquireLockAsync(key);
             await _distributedCache.RemoveAsync(key);
@@ -216,29 +216,18 @@ namespace Nop.Core.Caching
         }
 
         /// <summary>
-        /// Remove items by cache key prefix. The default implementation is rather inefficient, so it is recommended for
-        /// subclasses to override this method.
+        /// Remove items by cache key prefix
         /// </summary>
         /// <param name="prefix">Cache key prefix</param>
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public virtual async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
-        {
-            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
-            var removedKeys = RemoveByPrefixInstanceData(prefix_);
-            await Task.WhenAll(removedKeys.Select(key => RemoveAsync(key, false)));
-        }
+        public abstract Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters);
 
         /// <summary>
-        /// Clear all cache data. The default implementation is rather inefficient, so it is recommended for
-        /// subclasses to override this method.
+        /// Clear all cache data
         /// </summary>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public virtual async Task ClearAsync()
-        {
-            await Task.WhenAll(_locksByKey.Keys.Select(key => RemoveAsync(key, false)));
-            ClearInstanceData();
-        }
+        public abstract Task ClearAsync();
 
         public void Dispose()
         {
