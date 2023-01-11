@@ -15,18 +15,20 @@ namespace Nop.Core.Infrastructure
         }
 
         private readonly TrieNode _root;
+        private readonly string _prefix;
 
         public IEnumerable<string> Keys => Search(string.Empty).Select(kv => kv.Key);
         public IEnumerable<TValue> Values => Search(string.Empty).Select(kv => kv.Value);
 
 
-        public ConcurrentTrie() : this(new())
+        public ConcurrentTrie() : this(new(), string.Empty)
         {
         }
 
-        private ConcurrentTrie(TrieNode root)
+        private ConcurrentTrie(TrieNode root, string prefix)
         {
             _root = root;
+            _prefix = prefix;
         }
 
 
@@ -63,10 +65,10 @@ namespace Nop.Core.Infrastructure
             if (!Find(prefix, out var node))
                 return Enumerable.Empty<KeyValuePair<string, TValue>>();
 
-            static IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
+            IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
                 if (n.IsTerminal)
-                    yield return new KeyValuePair<string, TValue>(s, n.Value);
+                    yield return new KeyValuePair<string, TValue>(_prefix + s, n.Value);
                 foreach (var (c, child) in n.Children)
                 {
                     foreach (var kv in traverse(child, s + c))
@@ -107,7 +109,7 @@ namespace Nop.Core.Infrastructure
                 last = c;
             }
             if (parent?.Children.TryRemove(last, out var subtreeRoot) == true)
-                subtree = new ConcurrentTrie<TValue>(subtreeRoot);
+                subtree = new ConcurrentTrie<TValue>(subtreeRoot, prefix);
             return true;
         }
 
