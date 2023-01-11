@@ -11,7 +11,7 @@ using Nop.Core.Infrastructure;
 namespace Nop.Core.Caching
 {
     /// <summary>
-    /// A distributed cache manager that lazily acquires new entries
+    /// Represents a base distributed cache 
     /// </summary>
     public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheManager
     {

@@ -10,7 +10,7 @@ using Nop.Core.Configuration;
 namespace Nop.Core.Caching
 {
     /// <summary>
-    /// A memory cache manager that lazily acquires new entries
+    /// Represents a memory cache manager 
     /// </summary>
     public partial class MemoryCacheManager : CacheKeyService, IStaticCacheManager
     {
@@ -91,11 +91,10 @@ namespace Nop.Core.Caching
             if ((key?.CacheTime ?? 0) <= 0)
                 return await acquire();
 
-            var data = new Lazy<Task<T>>(acquire, true);
             return await _memoryCache.GetOrCreate(key.Key, entry =>
             {
                 entry.SetOptions(PrepareEntryOptions(key));
-                return data;
+                return new Lazy<Task<T>>(acquire, true);
             }).Value;
         }
 
