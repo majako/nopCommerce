@@ -17,9 +17,16 @@ namespace Nop.Core.Caching
     {
         #region Fields
 
+        /// <summary>
+        /// Holds the keys known by this nopCommerce instance
+        /// </summary>
         protected static readonly ConcurrentTrie<byte> _localKeys = new();
         protected readonly IDistributedCache _distributedCache;
         private readonly ConcurrentTrie<object> _perRequestCache = new();
+
+        /// <summary>
+        /// Holds ongoing acquisition tasks, used to avoid duplicating work
+        /// </summary>
         private readonly ConcurrentDictionary<string, Lazy<Task<object>>> _ongoing = new();
 
         #endregion
@@ -75,8 +82,8 @@ namespace Nop.Core.Caching
 
         private void SetLocal(string key, object value)
         {
-            _perRequestCache.Set(key, value);
-            _localKeys.Set(key, default);
+            _perRequestCache.Add(key, value);
+            _localKeys.Add(key, default);
         }
 
         private void RemoveLocal(string key)
@@ -185,6 +192,7 @@ namespace Nop.Core.Caching
             try
             {
                 // await the lazy task in order to force value creation instead of directly setting data
+                // this way, other cache manager instances can access it while it is being set
                 SetLocal(key.Key, await lazy.Value);
                 _ongoing.TryAdd(key.Key, lazy);
                 await _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));

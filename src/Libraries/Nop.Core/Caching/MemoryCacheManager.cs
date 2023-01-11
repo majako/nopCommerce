@@ -1,11 +1,10 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
 using Nop.Core.Configuration;
+using Nop.Core.Infrastructure;
 
 namespace Nop.Core.Caching
 {
@@ -20,7 +19,7 @@ namespace Nop.Core.Caching
         private bool _disposed;
 
         private readonly IMemoryCache _memoryCache;
-        private static readonly ConcurrentDictionary<string, CancellationTokenSource> _prefixes = new();
+        private static readonly ConcurrentTrie<byte> _keys = new();
         private static CancellationTokenSource _clearToken = new();
 
         #endregion
@@ -49,15 +48,28 @@ namespace Nop.Core.Caching
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(key.CacheTime)
             };
 
-            //add tokens to clear cache entries
+            //add token to clear cache entries
             options.AddExpirationToken(new CancellationChangeToken(_clearToken.Token));
-            foreach (var keyPrefix in key.Prefixes.ToList())
-            {
-                var tokenSource = _prefixes.GetOrAdd(keyPrefix, new CancellationTokenSource());
-                options.AddExpirationToken(new CancellationChangeToken(tokenSource.Token));
-            }
+            options.RegisterPostEvictionCallback(OnEviction);
+            _keys.Add(key.Key, default);
 
             return options;
+        }
+
+        private static void OnEviction(object key, object value, EvictionReason reason, object state)
+        {
+            switch (reason)
+            {
+                // we clean up after ourselves elsewhere
+                case EvictionReason.Removed:
+                case EvictionReason.Replaced:
+                case EvictionReason.TokenExpired:
+                    break;
+                // if the entry was evicted by the cache itself, we remove the key
+                default:
+                    _keys.TryRemove(key as string);
+                    break;
+            }
         }
 
         #endregion
@@ -73,6 +85,7 @@ namespace Nop.Core.Caching
         public Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
         {
             _memoryCache.Remove(PrepareKey(cacheKey, cacheKeyParameters).Key);
+            _keys.TryRemove(cacheKey.Key);
             return Task.CompletedTask;
         }
 
@@ -91,11 +104,14 @@ namespace Nop.Core.Caching
             if ((key?.CacheTime ?? 0) <= 0)
                 return await acquire();
 
-            return await _memoryCache.GetOrCreate(key.Key, entry =>
+            var value = await _memoryCache.GetOrCreate(key.Key, entry =>
             {
                 entry.SetOptions(PrepareEntryOptions(key));
                 return new Lazy<Task<T>>(acquire, true);
             }).Value;
+            if (value == null)
+                await RemoveAsync(key);
+            return value;
         }
 
         /// <summary>
@@ -141,9 +157,11 @@ namespace Nop.Core.Caching
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
 
-            _prefixes.TryRemove(prefix_, out var tokenSource);
-            tokenSource?.Cancel();
-            tokenSource?.Dispose();
+            if (_keys.Prune(prefix_, out var subtree))
+            {
+                foreach (var key in subtree.Keys)
+                    _memoryCache.Remove(key);
+            }
 
             return Task.CompletedTask;
         }
@@ -156,15 +174,8 @@ namespace Nop.Core.Caching
         {
             _clearToken.Cancel();
             _clearToken.Dispose();
-
             _clearToken = new CancellationTokenSource();
-
-            foreach (var prefix in _prefixes.Keys.ToList())
-            {
-                _prefixes.TryRemove(prefix, out var tokenSource);
-                tokenSource?.Dispose();
-            }
-
+            _keys.Clear();
             return Task.CompletedTask;
         }
 
