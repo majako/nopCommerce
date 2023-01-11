@@ -12,9 +12,24 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
+            private (bool hasValue, TValue value) _value;
             public ConcurrentDictionary<char, TrieNode> Children = new();
-            public bool IsTerminal = false;
-            public TValue Value;
+
+            public bool GetValue(out TValue value)
+            {
+                (var hasValue, value) = _value;
+                return hasValue;
+            }
+
+            public void SetValue(TValue value)
+            {
+                _value = (true, value);
+            }
+
+            public void RemoveValue()
+            {
+                _value = default;
+            }
         }
 
         private readonly TrieNode _root;
@@ -47,8 +62,8 @@ namespace Nop.Core.Infrastructure
             if (key is null)
                 throw new ArgumentNullException(nameof(key));
 
-            var found = Find(key.ToLowerInvariant(), out var node) && node.IsTerminal;
-            value = found ? node.Value : default;
+            value = default;
+            var found = Find(key.ToLowerInvariant(), out var node) && node.GetValue(out value);
             return found;
         }
 
@@ -63,8 +78,7 @@ namespace Nop.Core.Infrastructure
                 throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
 
             var node = GetOrAddNode(key.ToLowerInvariant());
-            node.Value = value;
-            node.IsTerminal = true;
+            node.SetValue(value);
         }
 
         /// <summary>
@@ -93,8 +107,8 @@ namespace Nop.Core.Infrastructure
             // depth-first traversal
             IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
-                if (n.IsTerminal)
-                    yield return new KeyValuePair<string, TValue>(_prefix + s, n.Value);
+                if (n.GetValue(out var value))
+                    yield return new KeyValuePair<string, TValue>(_prefix + s, value);
                 foreach (var (c, child) in n.Children)
                 {
                     foreach (var kv in traverse(child, s + c))
@@ -124,10 +138,11 @@ namespace Nop.Core.Infrastructure
         public TValue GetOrAdd(string key, Func<TValue> valueFactory)
         {
             var node = GetOrAddNode(key.ToLowerInvariant());
-            if (!node.IsTerminal)
-                node.Value = valueFactory();
-            node.IsTerminal = true;
-            return node.Value;
+            if (node.GetValue(out var value))
+                return value;
+            value = valueFactory();
+            node.SetValue(value);
+            return value;
         }
 
         /// <summary>
@@ -188,11 +203,8 @@ namespace Nop.Core.Infrastructure
         {
             if (key.Length == 0)
             {
-                if (node.IsTerminal)
-                {
-                    node.IsTerminal = false;
-                    node.Value = default;
-                }
+                if (node.GetValue(out _))
+                    node.RemoveValue();
                 return !node.Children.IsEmpty;
             }
             var c = key[0];
