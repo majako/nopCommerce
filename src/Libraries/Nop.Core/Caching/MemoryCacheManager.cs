@@ -10,7 +10,7 @@ using Nop.Core.Configuration;
 namespace Nop.Core.Caching
 {
     /// <summary>
-    /// A memory cache manager that locks the acquisition task
+    /// A memory cache manager that lazily acquires new entries
     /// </summary>
     public partial class MemoryCacheManager : CacheKeyService, IStaticCacheManager
     {

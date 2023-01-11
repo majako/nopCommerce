@@ -11,7 +11,7 @@ using Nop.Core.Infrastructure;
 namespace Nop.Core.Caching
 {
     /// <summary>
-    /// A distributed cache manager that locks the acquisition task
+    /// A distributed cache manager that lazily acquires new entries
     /// </summary>
     public abstract class DistributedCacheManager : CacheKeyService, IStaticCacheManager
     {
@@ -88,14 +88,9 @@ namespace Nop.Core.Caching
         private async Task<(bool isSet, T item)> TryGetItemAsync<T>(string key)
         {
             var json = await _distributedCache.GetStringAsync(key);
-
-            if (string.IsNullOrEmpty(json))
-                return (false, default);
-
-            var item = JsonConvert.DeserializeObject<T>(json);
-            _perRequestCache.Set(key, item);
-
-            return (true, item);
+            return string.IsNullOrEmpty(json)
+              ? (false, default)
+              : (true, item: JsonConvert.DeserializeObject<T>(json));
         }
 
         protected async Task RemoveAsync(string key, bool removeFromInstance = true)
@@ -146,12 +141,12 @@ namespace Nop.Core.Caching
                 if (!isSet)
                 {
                     item = (T)await lazy.Value;
-                    SetLocal(key.Key, item);
                     setTask = _distributedCache.SetStringAsync(
                         key.Key,
                         JsonConvert.SerializeObject(item),
                         PrepareEntryOptions(key));
                 }
+                SetLocal(key.Key, item);
                 return item;
             }
             finally
