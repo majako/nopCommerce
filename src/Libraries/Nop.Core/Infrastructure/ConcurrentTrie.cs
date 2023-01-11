@@ -105,15 +105,12 @@ namespace Nop.Core.Infrastructure
         }
 
         /// <summary>
-        /// Attempts to remove the item with the given key
+        /// Removes the item with the given key, if present
         /// </summary>
         /// <param name="key">The key of the item to be removed (case-insensitive)</param>
-        /// <returns>
-        /// True if the item was successfully removed
-        /// </returns>
-        public bool TryRemove(string key)
+        public void Remove(string key)
         {
-            return TryRemove(_root, key.ToLowerInvariant());
+            Remove(_root, key.ToLowerInvariant());
         }
 
         /// <summary>
@@ -181,7 +178,13 @@ namespace Nop.Core.Infrastructure
             return true;
         }
 
-        private bool TryRemove(TrieNode node, string key)
+        /// <summary>
+        /// Removes the value from the node with key <paramref name="key"/>, if found
+        /// </summary>
+        /// <returns>
+        /// True iff the value was removed
+        /// </returns>
+        private bool Remove(TrieNode node, string key)
         {
             if (key.Length == 0)
             {
@@ -195,7 +198,7 @@ namespace Nop.Core.Infrastructure
             var c = key[0];
             if (node.Children.TryGetValue(c, out var child))
             {
-                if (!TryRemove(child, key[1..]))
+                if (!Remove(child, key[1..]))
                     node.Children.TryRemove(new(c, child));
             }
             return true;

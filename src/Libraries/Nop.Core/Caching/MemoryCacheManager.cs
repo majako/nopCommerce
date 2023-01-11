@@ -67,7 +67,7 @@ namespace Nop.Core.Caching
                     break;
                 // if the entry was evicted by the cache itself, we remove the key
                 default:
-                    _keys.TryRemove(key as string);
+                    _keys.Remove(key as string);
                     break;
             }
         }
@@ -85,7 +85,7 @@ namespace Nop.Core.Caching
         public Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
         {
             _memoryCache.Remove(PrepareKey(cacheKey, cacheKeyParameters).Key);
-            _keys.TryRemove(cacheKey.Key);
+            _keys.Remove(cacheKey.Key);
             return Task.CompletedTask;
         }
 

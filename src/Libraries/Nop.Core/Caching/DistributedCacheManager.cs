@@ -88,8 +88,8 @@ namespace Nop.Core.Caching
 
         private void RemoveLocal(string key)
         {
-            _perRequestCache.TryRemove(key);
-            _localKeys.TryRemove(key);
+            _perRequestCache.Remove(key);
+            _localKeys.Remove(key);
         }
 
         private async Task<(bool isSet, T item)> TryGetItemAsync<T>(string key)
