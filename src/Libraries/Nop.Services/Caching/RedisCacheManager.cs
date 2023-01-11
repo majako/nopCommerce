@@ -22,8 +22,8 @@ namespace Nop.Services.Caching
 
         #region Ctor
 
-        public RedisCacheManager(AppSettings appSettings, IDistributedCache distributedCache, RedisConnectionWrapper connectionWrapper, CacheLockManager cacheLockManager)
-        : base(appSettings, distributedCache, cacheLockManager)
+        public RedisCacheManager(AppSettings appSettings, IDistributedCache distributedCache, RedisConnectionWrapper connectionWrapper)
+        : base(appSettings, distributedCache)
         {
             _connectionWrapper = connectionWrapper;
         }
@@ -66,7 +66,7 @@ namespace Nop.Services.Caching
                 db.KeyDelete(keys.ToArray());
             }
 
-            await RemoveByPrefixInstanceDataAsync(prefix);
+            RemoveByPrefixInstanceData(prefix);
         }
 
         /// <summary>

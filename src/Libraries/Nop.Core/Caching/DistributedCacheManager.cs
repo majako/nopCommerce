@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Distributed;
 using Newtonsoft.Json;
@@ -15,18 +17,18 @@ namespace Nop.Core.Caching
     {
         #region Fields
 
+        protected static readonly ConcurrentTrie<byte> _localKeys = new();
         protected readonly IDistributedCache _distributedCache;
-        protected readonly CacheLockManager _cacheLockManager;
         private readonly ConcurrentTrie<object> _perRequestCache = new();
+        private readonly ConcurrentDictionary<string, Lazy<Task<object>>> _ongoing = new();
 
         #endregion
 
         #region Ctor
 
-        public DistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache, CacheLockManager cacheLockManager) : base(appSettings)
+        public DistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache) : base(appSettings)
         {
             _distributedCache = distributedCache;
-            _cacheLockManager = cacheLockManager;
         }
 
         #endregion
@@ -40,7 +42,6 @@ namespace Nop.Core.Caching
         protected void ClearInstanceData()
         {
             _perRequestCache.Clear();
-            _cacheLockManager.Clear();
         }
 
         /// <summary>
@@ -49,11 +50,13 @@ namespace Nop.Core.Caching
         /// <param name="prefix">Cache key prefix</param>
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
         /// <returns>The removed keys</returns>
-        protected async Task<IEnumerable<string>> RemoveByPrefixInstanceDataAsync(string prefix, params object[] prefixParameters)
+        protected IEnumerable<string> RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
             _perRequestCache.Prune(prefix_, out _);
-            return await _cacheLockManager.RemoveByPrefixAsync(prefix_);
+            return _localKeys.Prune(prefix_, out var subtree)
+                ? subtree.Keys
+                : Enumerable.Empty<string>();
         }
 
         /// <summary>
@@ -70,71 +73,36 @@ namespace Nop.Core.Caching
             };
         }
 
+        private void SetLocal(string key, object value)
+        {
+            _perRequestCache.Set(key, value);
+            _localKeys.Set(key, default);
+        }
+
+        private void RemoveLocal(string key)
+        {
+            _perRequestCache.TryRemove(key);
+            _localKeys.TryRemove(key);
+        }
+
         private async Task<(bool isSet, T item)> TryGetItemAsync<T>(string key)
         {
-            var cacheLock = await _cacheLockManager.AcquireLockAsync(key);
-            try
-            {
-                var json = await _distributedCache.GetStringAsync(key);
+            var json = await _distributedCache.GetStringAsync(key);
 
-                if (string.IsNullOrEmpty(json))
-                    return (false, default);
+            if (string.IsNullOrEmpty(json))
+                return (false, default);
 
-                var item = JsonConvert.DeserializeObject<T>(json);
-                _perRequestCache.Set(key, item);
+            var item = JsonConvert.DeserializeObject<T>(json);
+            _perRequestCache.Set(key, item);
 
-                return (true, item);
-            }
-            finally
-            {
-                cacheLock.Release();
-            }
+            return (true, item);
         }
 
-        private async Task<T> GetOrSetAsync<T>(CacheKey key, Func<Task<T>> acquire, bool forceOverwrite)
+        protected async Task RemoveAsync(string key, bool removeFromInstance = true)
         {
-            if ((key?.CacheTime ?? 0) <= 0)
-                return await acquire();
-
-            var setTask = Task.CompletedTask;
-            var cacheLock = await _cacheLockManager.AcquireLockAsync(key.Key);
-            try
-            {
-                T data = default;
-                if (!forceOverwrite)
-                {
-                    if (_perRequestCache.TryGetValue(key.Key, out var value))
-                        return (T)value;
-                    var json = await _distributedCache.GetStringAsync(key.Key);
-                    if (!string.IsNullOrEmpty(json))
-                    {
-                        data = JsonConvert.DeserializeObject<T>(json);
-                        _perRequestCache.Set(key.Key, data);
-                        return data;
-                    }
-                }
-                data = await acquire();
-                if (data != null)
-                {
-                    _perRequestCache.Set(key.Key, data);
-                    setTask = _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
-                }
-                return data;
-            }
-            finally
-            {
-                _ = setTask.ContinueWith(_ => cacheLock.Release());
-            }
-        }
-
-        protected async Task RemoveAsync(string key, bool removeFromPerRequestCache = true)
-        {
-            var cacheLock = await _cacheLockManager.AcquireLockAsync(key);
             await _distributedCache.RemoveAsync(key);
-            if (removeFromPerRequestCache)
-                _perRequestCache.TryRemove(key);
-            await _cacheLockManager.RemoveLockAsync(key);
-            cacheLock.Cancel();
+            if (removeFromInstance)
+                RemoveLocal(key);
         }
 
         #endregion
@@ -166,8 +134,30 @@ namespace Nop.Core.Caching
         {
             if (_perRequestCache.TryGetValue(key.Key, out var data))
                 return (T)data;
-            var (isSet, item) = await TryGetItemAsync<T>(key.Key);
-            return isSet ? item : await GetOrSetAsync(key, acquire, false);
+            var lazy = _ongoing.GetOrAdd(
+                key.Key,
+                _ => new(async () => await acquire(), true));
+            var setTask = Task.CompletedTask;
+            try
+            {
+                if (lazy.IsValueCreated)
+                    return (T)await lazy.Value;
+                var (isSet, item) = await TryGetItemAsync<T>(key.Key);
+                if (!isSet)
+                {
+                    item = (T)await lazy.Value;
+                    SetLocal(key.Key, item);
+                    setTask = _distributedCache.SetStringAsync(
+                        key.Key,
+                        JsonConvert.SerializeObject(item),
+                        PrepareEntryOptions(key));
+                }
+                return item;
+            }
+            finally
+            {
+                _ = setTask.ContinueWith(_ => _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy)));
+            }
         }
 
         /// <summary>
@@ -191,11 +181,23 @@ namespace Nop.Core.Caching
         /// <param name="key">Key of cached item</param>
         /// <param name="data">Value for caching</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public Task SetAsync(CacheKey key, object data)
+        public async Task SetAsync<T>(CacheKey key, T data)
         {
-            return data != null
-                ? GetOrSetAsync(key, () => Task.FromResult(data), true)
-                : Task.CompletedTask;
+            if (data == null || (key?.CacheTime ?? 0) <= 0)
+                return;
+
+            var lazy = new Lazy<Task<object>>(() => Task.FromResult(data as object), true);
+            try
+            {
+                // await the lazy task in order to force value creation instead of directly setting data
+                SetLocal(key.Key, await lazy.Value);
+                _ongoing.TryAdd(key.Key, lazy);
+                await _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
+            }
+            finally
+            {
+                _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy));
+            }
         }
 
         /// <summary>

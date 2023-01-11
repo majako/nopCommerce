@@ -92,7 +92,6 @@ namespace Nop.Web.Framework.Infrastructure
             //static cache manager
             var appSettings = Singleton<AppSettings>.Instance;
             var distributedCacheConfig = appSettings.Get<DistributedCacheConfig>();
-            services.AddSingleton<CacheLockManager>();
             if (distributedCacheConfig.Enabled)
             {
                 switch (distributedCacheConfig.DistributedCacheType)
@@ -114,8 +113,7 @@ namespace Nop.Web.Framework.Infrastructure
                                 appSettings,
                                 new RedisSynchronizedMemoryCache(
                                     services.GetRequiredService<IMemoryCache>(),
-                                    services.GetRequiredService<RedisConnectionWrapper>()),
-                                services.GetRequiredService<CacheLockManager>()));
+                                    services.GetRequiredService<RedisConnectionWrapper>())));
                         break;
                 }
                 services.AddSingleton<ILocker, DistributedCacheLocker>();

@@ -9,7 +9,7 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
-            public ConcurrentDictionary<char, Lazy<TrieNode>> Children = new();
+            public ConcurrentDictionary<char, TrieNode> Children = new();
             public bool IsTerminal = false;
             public TValue Value;
         }
@@ -45,7 +45,7 @@ namespace Nop.Core.Infrastructure
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
 
-            var node = GetOrAddNode(key.ToLowerInvariant()).Value;
+            var node = GetOrAddNode(key.ToLowerInvariant());
             node.Value = value;
             node.IsTerminal = true;
         }
@@ -69,7 +69,7 @@ namespace Nop.Core.Infrastructure
                     yield return new KeyValuePair<string, TValue>(s, n.Value);
                 foreach (var (c, child) in n.Children)
                 {
-                    foreach (var kv in traverse(child.Value, s + c))
+                    foreach (var kv in traverse(child, s + c))
                         yield return kv;
                 }
             }
@@ -84,12 +84,10 @@ namespace Nop.Core.Infrastructure
         public TValue GetOrAdd(string key, Func<TValue> valueFactory)
         {
             var node = GetOrAddNode(key.ToLowerInvariant());
-            if (!node.IsValueCreated)
-            {
-                node.Value.Value = valueFactory();
-                node.Value.IsTerminal = true;
-            }
-            return node.Value.Value;
+            if (!node.IsTerminal)
+                node.Value = valueFactory();
+            node.IsTerminal = true;
+            return node.Value;
         }
 
         public bool Prune(string prefix, out ConcurrentTrie<TValue> subtree)
@@ -98,39 +96,37 @@ namespace Nop.Core.Infrastructure
                 throw new ArgumentException($"'{nameof(prefix)}' cannot be null or empty.", nameof(prefix));
 
             subtree = default;
-            var node = new Lazy<TrieNode>(_root);
+            var node = _root;
             TrieNode parent = null;
             char last = default;
             foreach (var c in prefix.ToLowerInvariant())
             {
-                parent = node.Value;
-                if (!node.Value.Children.TryGetValue(c, out node))
+                parent = node;
+                if (!node.Children.TryGetValue(c, out node))
                     return false;
                 last = c;
             }
             if (parent?.Children.TryRemove(last, out var subtreeRoot) == true)
-                subtree = new ConcurrentTrie<TValue>(subtreeRoot.Value);
+                subtree = new ConcurrentTrie<TValue>(subtreeRoot);
             return true;
         }
 
-        private Lazy<TrieNode> GetOrAddNode(string key)
+        private TrieNode GetOrAddNode(string key)
         {
-            var node = new Lazy<TrieNode>(_root);
+            var node = _root;
             foreach (var c in key)
-                node = node.Value.Children.GetOrAdd(c, _ => new(true));
+                node = node.Children.GetOrAdd(c, _ => new());
             return node;
         }
 
         private bool Find(string key, out TrieNode node)
         {
-            node = default;
-            var lazyNode = new Lazy<TrieNode>(_root);
+            node = _root;
             foreach (var c in key)
             {
-                if (!lazyNode.Value.Children.TryGetValue(c, out lazyNode))
+                if (!node.Children.TryGetValue(c, out node))
                     return false;
             }
-            node = lazyNode.Value;
             return true;
         }
 
@@ -148,7 +144,7 @@ namespace Nop.Core.Infrastructure
             var c = key[0];
             if (node.Children.TryGetValue(c, out var child))
             {
-                if (!TryRemove(child.Value, key[1..]))
+                if (!TryRemove(child, key[1..]))
                     node.Children.TryRemove(new(c, child));
             }
             return true;

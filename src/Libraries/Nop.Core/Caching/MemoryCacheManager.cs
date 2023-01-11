@@ -20,7 +20,6 @@ namespace Nop.Core.Caching
         private bool _disposed;
 
         private readonly IMemoryCache _memoryCache;
-        private readonly CacheLockManager _cacheLockManager;
         private static readonly ConcurrentDictionary<string, CancellationTokenSource> _prefixes = new();
         private static CancellationTokenSource _clearToken = new();
 
@@ -28,30 +27,21 @@ namespace Nop.Core.Caching
 
         #region Ctor
 
-        public MemoryCacheManager(AppSettings appSettings, IMemoryCache memoryCache, CacheLockManager cacheLockManager) : base(appSettings)
+        public MemoryCacheManager(AppSettings appSettings, IMemoryCache memoryCache) : base(appSettings)
         {
             _memoryCache = memoryCache;
-            _cacheLockManager = cacheLockManager;
         }
 
         #endregion
 
         #region Utilities
 
-        private async void OnEvictionAsync(object key, object value, EvictionReason reason, object state)
-        {
-            if (reason == EvictionReason.Replaced)
-                return;
-
-            await _cacheLockManager.RemoveLockAsync(key as string);
-        }
-
         /// <summary>
         /// Prepare cache entry options for the passed key
         /// </summary>
         /// <param name="key">Cache key</param>
         /// <returns>Cache entry options</returns>
-        private MemoryCacheEntryOptions PrepareEntryOptions(CacheKey key)
+        private static MemoryCacheEntryOptions PrepareEntryOptions(CacheKey key)
         {
             //set expiration time for the passed cache key
             var options = new MemoryCacheEntryOptions
@@ -66,30 +56,8 @@ namespace Nop.Core.Caching
                 var tokenSource = _prefixes.GetOrAdd(keyPrefix, new CancellationTokenSource());
                 options.AddExpirationToken(new CancellationChangeToken(tokenSource.Token));
             }
-            options.RegisterPostEvictionCallback(OnEvictionAsync);
 
             return options;
-        }
-
-        private async Task<T> SetAsync<T>(CacheKey key, Func<Task<T>> acquire, bool forceOverwrite)
-        {
-            if ((key?.CacheTime ?? 0) <= 0)
-                return await acquire();
-
-            var cacheLock = await _cacheLockManager.AcquireLockAsync(key.Key);
-            try
-            {
-                if (!forceOverwrite && _memoryCache.TryGetValue(key.Key, out T data))
-                    return data;
-                data = await acquire();
-                if (data != null)
-                    _memoryCache.Set(key.Key, data, PrepareEntryOptions(key));
-                return data;
-            }
-            finally
-            {
-                cacheLock.Release();
-            }
         }
 
         #endregion
@@ -102,18 +70,10 @@ namespace Nop.Core.Caching
         /// <param name="cacheKey">Cache key</param>
         /// <param name="cacheKeyParameters">Parameters to create cache key</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
+        public Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
         {
-            var key = PrepareKey(cacheKey, cacheKeyParameters);
-            var cacheLock = await _cacheLockManager.AcquireLockAsync(key.Key);
-            try
-            {
-                _memoryCache.Remove(key.Key);
-            }
-            finally
-            {
-                cacheLock.Release();
-            }
+            _memoryCache.Remove(PrepareKey(cacheKey, cacheKeyParameters).Key);
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -131,9 +91,12 @@ namespace Nop.Core.Caching
             if ((key?.CacheTime ?? 0) <= 0)
                 return await acquire();
 
-            if (_memoryCache.TryGetValue(key.Key, out T result))
-                return result;
-            return await SetAsync(key, acquire, false);
+            var data = new Lazy<Task<T>>(acquire, true);
+            return await _memoryCache.GetOrCreate(key.Key, entry =>
+            {
+                entry.SetOptions(PrepareEntryOptions(key));
+                return data;
+            }).Value;
         }
 
         /// <summary>
@@ -146,9 +109,9 @@ namespace Nop.Core.Caching
         /// A task that represents the asynchronous operation
         /// The task result contains the cached value associated with the specified key
         /// </returns>
-        public Task<T> GetAsync<T>(CacheKey key, Func<T> acquire)
+        public async Task<T> GetAsync<T>(CacheKey key, Func<T> acquire)
         {
-            return GetAsync(key, () => Task.FromResult(acquire()));
+            return await GetAsync(key, () => Task.FromResult(acquire()));
         }
 
         /// <summary>
@@ -157,10 +120,15 @@ namespace Nop.Core.Caching
         /// <param name="key">Key of cached item</param>
         /// <param name="data">Value for caching</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public Task SetAsync(CacheKey key, object data)
+        public Task SetAsync<T>(CacheKey key, T data)
         {
-            if (data != null)
-                SetAsync(key, () => Task.FromResult(data), true).Wait();
+            if (data != null && (key?.CacheTime ?? 0) > 0)
+            {
+                _memoryCache.Set(
+                    key.Key,
+                    new Lazy<Task<T>>(() => Task.FromResult(data), true),
+                    PrepareEntryOptions(key));
+            }
             return Task.CompletedTask;
         }
 

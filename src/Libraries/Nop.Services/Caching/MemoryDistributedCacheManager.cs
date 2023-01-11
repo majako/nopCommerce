@@ -10,8 +10,8 @@ namespace Nop.Services.Caching
     {
         #region Ctor
 
-        public MemoryDistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache, CacheLockManager cacheLockManager)
-        : base(appSettings, distributedCache, cacheLockManager)
+        public MemoryDistributedCacheManager(AppSettings appSettings, IDistributedCache distributedCache)
+        : base(appSettings, distributedCache)
         {
         }
 
@@ -19,14 +19,14 @@ namespace Nop.Services.Caching
 
         public override async Task ClearAsync()
         {
-            await Task.WhenAll(_cacheLockManager.Keys.Select(key => RemoveAsync(key, false)));
+            await Task.WhenAll(_localKeys.Keys.Select(key => RemoveAsync(key, false)));
             ClearInstanceData();
         }
 
         public override async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
             var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
-            var removedKeys = await RemoveByPrefixInstanceDataAsync(prefix_);
+            var removedKeys = RemoveByPrefixInstanceData(prefix_);
             await Task.WhenAll(removedKeys.Select(key => RemoveAsync(key, false)));
         }
     }

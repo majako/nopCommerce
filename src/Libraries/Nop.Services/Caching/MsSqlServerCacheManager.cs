@@ -21,8 +21,8 @@ namespace Nop.Services.Caching
 
         #region Ctor
 
-        public MsSqlServerCacheManager(AppSettings appSettings, IDistributedCache distributedCache, CacheLockManager cacheLockManager)
-        : base(appSettings, distributedCache, cacheLockManager)
+        public MsSqlServerCacheManager(AppSettings appSettings, IDistributedCache distributedCache)
+        : base(appSettings, distributedCache)
         {
             _distributedCacheConfig = appSettings.Get<DistributedCacheConfig>();
         }
@@ -69,7 +69,7 @@ namespace Nop.Services.Caching
 
             await PerformActionAsync(command, new SqlParameter("Prefix", SqlDbType.NVarChar) { Value = prefix });
 
-            await RemoveByPrefixInstanceDataAsync(prefix);
+            RemoveByPrefixInstanceData(prefix);
         }
 
         /// <summary>
