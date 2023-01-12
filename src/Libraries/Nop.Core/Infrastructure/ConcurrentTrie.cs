@@ -193,12 +193,6 @@ namespace Nop.Core.Infrastructure
             return true;
         }
 
-        /// <summary>
-        /// Removes the value from the node with key <paramref name="key"/>, if found
-        /// </summary>
-        /// <returns>
-        /// True iff the value was removed
-        /// </returns>
         private bool Remove(TrieNode node, string key)
         {
             if (key.Length == 0)
