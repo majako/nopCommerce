@@ -102,6 +102,7 @@ namespace Nop.Core.Caching
 
         protected async Task RemoveAsync(string key, bool removeFromInstance = true)
         {
+            _ongoing.TryRemove(key, out _);
             await _distributedCache.RemoveAsync(key);
             if (removeFromInstance)
                 RemoveLocal(key);
