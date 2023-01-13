@@ -33,20 +33,25 @@ namespace Nop.Core.Infrastructure
 
             public void SetValue(TValue value)
             {
+                SetValue(value, true);
+            }
+
+            public void RemoveValue()
+            {
+                SetValue(default, false);
+            }
+
+            private void SetValue(TValue value, bool hasValue)
+            {
                 _lock.EnterWriteLock();
                 try
                 {
-                    _value = (true, value);
+                    _value = (hasValue, value);
                 }
                 finally
                 {
                     _lock.ExitWriteLock();
                 }
-            }
-
-            public void RemoveValue()
-            {
-                SetValue(default);
             }
         }
 
