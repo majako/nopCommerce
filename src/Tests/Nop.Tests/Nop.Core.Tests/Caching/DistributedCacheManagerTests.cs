@@ -93,7 +93,7 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
         [Test]
         public async Task CanRemoveByPrefix()
         {
-            await _staticCacheManager.SetAsync(new CacheKey("some_key_1"), 1);
+            await _distributedCache.SetAsync("some_key_1", Encoding.UTF8.GetBytes("1"));
             await _staticCacheManager.SetAsync(new CacheKey("some_key_2"), 2);
             await _staticCacheManager.SetAsync(new CacheKey("some_other_key"), 3);
 
