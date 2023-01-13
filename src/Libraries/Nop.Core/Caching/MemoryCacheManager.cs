@@ -51,7 +51,7 @@ namespace Nop.Core.Caching
             //add token to clear cache entries
             options.AddExpirationToken(new CancellationChangeToken(_clearToken.Token));
             options.RegisterPostEvictionCallback(OnEviction);
-            _keys.Add(key.Key.ToLowerInvariant(), default);
+            _keys.Add(key.Key, default);
 
             return options;
         }
@@ -84,7 +84,7 @@ namespace Nop.Core.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
         {
-            var key = PrepareKey(cacheKey, cacheKeyParameters).Key.ToLowerInvariant();
+            var key = PrepareKey(cacheKey, cacheKeyParameters).Key;
             _memoryCache.Remove(key);
             _keys.Remove(key);
             return Task.CompletedTask;
@@ -106,7 +106,7 @@ namespace Nop.Core.Caching
                 return await acquire();
 
             var value = await _memoryCache.GetOrCreate(
-                key.Key.ToLowerInvariant(),
+                key.Key,
                 entry =>
                 {
                     entry.SetOptions(PrepareEntryOptions(key));
@@ -143,7 +143,7 @@ namespace Nop.Core.Caching
             if (data != null && (key?.CacheTime ?? 0) > 0)
             {
                 _memoryCache.Set(
-                    key.Key.ToLowerInvariant(),
+                    key.Key,
                     new Lazy<Task<T>>(() => Task.FromResult(data), true),
                     PrepareEntryOptions(key));
             }
@@ -158,9 +158,7 @@ namespace Nop.Core.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
-            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters).ToLowerInvariant();
-
-            if (_keys.Prune(prefix_, out var subtree))
+            if (_keys.Prune(PrepareKeyPrefix(prefix, prefixParameters), out var subtree))
             {
                 foreach (var key in subtree.Keys)
                     _memoryCache.Remove(key);

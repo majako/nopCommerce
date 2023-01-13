@@ -42,11 +42,11 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
         }
 
         [Test]
-        public async Task IgnoresKeyCase()
+        public async Task DoesNotIgnoreKeyCase()
         {
             await _staticCacheManager.SetAsync(new CacheKey("Some_Key_1"), 3);
             var rez = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => 0);
-            rez.Should().Be(3);
+            rez.Should().Be(0);
         }
 
         [Test]
@@ -97,7 +97,7 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
             await _staticCacheManager.SetAsync(new CacheKey("some_key_2"), 2);
             await _staticCacheManager.SetAsync(new CacheKey("some_other_key"), 3);
 
-            await _staticCacheManager.RemoveByPrefixAsync("Some_Key");
+            await _staticCacheManager.RemoveByPrefixAsync("some_key");
 
             var result = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => 0);
             result.Should().Be(0);

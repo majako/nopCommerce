@@ -59,7 +59,7 @@ namespace Nop.Core.Caching
         /// <returns>The removed keys</returns>
         protected IEnumerable<string> RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
         {
-            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters).ToLowerInvariant();
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
             _perRequestCache.Prune(prefix_, out _);
             return _localKeys.Prune(prefix_, out var subtree)
                 ? subtree.Keys
@@ -102,11 +102,10 @@ namespace Nop.Core.Caching
 
         protected async Task RemoveAsync(string key, bool removeFromInstance = true)
         {
-            var key_ = key.ToLowerInvariant();
-            _ongoing.TryRemove(key_, out _);
-            await _distributedCache.RemoveAsync(key_);
+            _ongoing.TryRemove(key, out _);
+            await _distributedCache.RemoveAsync(key);
             if (removeFromInstance)
-                RemoveLocal(key_);
+                RemoveLocal(key);
         }
 
         #endregion
@@ -136,30 +135,29 @@ namespace Nop.Core.Caching
         /// </returns>
         public async Task<T> GetAsync<T>(CacheKey key, Func<Task<T>> acquire)
         {
-            var key_ = key.Key.ToLowerInvariant();
-            if (_perRequestCache.TryGetValue(key_, out var data))
+            if (_perRequestCache.TryGetValue(key.Key, out var data))
                 return (T)data;
-            var lazy = _ongoing.GetOrAdd(key_, _ => new(async () => await acquire(), true));
+            var lazy = _ongoing.GetOrAdd(key.Key, _ => new(async () => await acquire(), true));
             var setTask = Task.CompletedTask;
             try
             {
                 if (lazy.IsValueCreated)
                     return (T)await lazy.Value;
-                var (isSet, item) = await TryGetItemAsync<T>(key_);
+                var (isSet, item) = await TryGetItemAsync<T>(key.Key);
                 if (!isSet)
                 {
                     item = (T)await lazy.Value;
                     setTask = _distributedCache.SetStringAsync(
-                        key_,
+                        key.Key,
                         JsonConvert.SerializeObject(item),
                         PrepareEntryOptions(key));
                 }
-                SetLocal(key_, item);
+                SetLocal(key.Key, item);
                 return item;
             }
             finally
             {
-                _ = setTask.ContinueWith(_ => _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key_, lazy)));
+                _ = setTask.ContinueWith(_ => _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy)));
             }
         }
 
@@ -190,18 +188,17 @@ namespace Nop.Core.Caching
                 return;
 
             var lazy = new Lazy<Task<object>>(() => Task.FromResult(data as object), true);
-            var key_ = key.Key.ToLowerInvariant();
             try
             {
                 // await the lazy task in order to force value creation instead of directly setting data
                 // this way, other cache manager instances can access it while it is being set
-                SetLocal(key_, await lazy.Value);
-                _ongoing.TryAdd(key_, lazy);
-                await _distributedCache.SetStringAsync(key_, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
+                SetLocal(key.Key, await lazy.Value);
+                _ongoing.TryAdd(key.Key, lazy);
+                await _distributedCache.SetStringAsync(key.Key, JsonConvert.SerializeObject(data), PrepareEntryOptions(key));
             }
             finally
             {
-                _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key_, lazy));
+                _ongoing.TryRemove(new KeyValuePair<string, Lazy<Task<object>>>(key.Key, lazy));
             }
         }
 
