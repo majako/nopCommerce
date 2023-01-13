@@ -99,10 +99,10 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
 
             await _staticCacheManager.RemoveByPrefixAsync("Some_Key");
 
-            var result = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => Task.FromResult((object)null));
-            result.Should().BeNull();
-            result = await _staticCacheManager.GetAsync(new CacheKey("some_key_2"), () => Task.FromResult((object)null));
-            result.Should().BeNull();
+            var result = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => 0);
+            result.Should().Be(0);
+            result = await _staticCacheManager.GetAsync(new CacheKey("some_key_2"), () => 0);
+            result.Should().Be(0);
             result = await _staticCacheManager.GetAsync(new CacheKey("some_other_key"), () => 0);
             result.Should().Be(3);
         }

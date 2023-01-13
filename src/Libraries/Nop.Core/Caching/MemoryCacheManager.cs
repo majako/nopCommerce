@@ -158,7 +158,7 @@ namespace Nop.Core.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
-            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters).ToLowerInvariant();
 
             if (_keys.Prune(prefix_, out var subtree))
             {

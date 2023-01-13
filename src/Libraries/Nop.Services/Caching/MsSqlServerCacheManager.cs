@@ -61,15 +61,15 @@ namespace Nop.Services.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public override async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
-            prefix = PrepareKeyPrefix(prefix, prefixParameters);
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters).ToLowerInvariant();
 
             var command =
                 new SqlCommand(
                     $"DELETE FROM {_distributedCacheConfig.SchemaName}.{_distributedCacheConfig.TableName} WHERE Id LIKE @Prefix + '%'");
 
-            await PerformActionAsync(command, new SqlParameter("Prefix", SqlDbType.NVarChar) { Value = prefix });
+            await PerformActionAsync(command, new SqlParameter("Prefix", SqlDbType.NVarChar) { Value = prefix_ });
 
-            RemoveByPrefixInstanceData(prefix);
+            RemoveByPrefixInstanceData(prefix_);
         }
 
         /// <summary>

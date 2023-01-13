@@ -72,10 +72,10 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
 
             await _staticCacheManager.RemoveByPrefixAsync("Some_Key");
 
-            var result = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => Task.FromResult((object)null));
-            result.Should().BeNull();
-            result = await _staticCacheManager.GetAsync(new CacheKey("some_key_2"), () => Task.FromResult((object)null));
-            result.Should().BeNull();
+            var result = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => 0);
+            result.Should().Be(0);
+            result = await _staticCacheManager.GetAsync(new CacheKey("some_key_2"), () => 0);
+            result.Should().Be(0);
             result = await _staticCacheManager.GetAsync(new CacheKey("some_other_key"), () => 0);
             result.Should().Be(3);
         }
@@ -84,7 +84,7 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
         public async Task ExecutesSetInOrder()
         {
             await Task.WhenAll(Enumerable.Range(1, 5).Select(i => _staticCacheManager.SetAsync(new CacheKey("some_key_1"), i)));
-            var value = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => Task.FromResult(0));
+            var value = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => 0);
             value.Should().Be(5);
         }
 

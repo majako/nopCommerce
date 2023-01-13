@@ -41,7 +41,7 @@ namespace Nop.Services.Caching
         protected virtual async Task<IEnumerable<RedisKey>> GetKeysAsync(EndPoint endPoint, string prefix = null)
         {
             return await (await _connectionWrapper.GetServerAsync(endPoint))
-                .KeysAsync((await _connectionWrapper.GetDatabaseAsync()).Database, string.IsNullOrEmpty(prefix) ? null : $"{prefix}*")
+                .KeysAsync((await _connectionWrapper.GetDatabaseAsync()).Database, string.IsNullOrEmpty(prefix) ? null : $"{prefix.ToLowerInvariant()}*")
                 .ToListAsync();
         }
 
@@ -52,21 +52,21 @@ namespace Nop.Services.Caching
         /// <summary>
         /// Remove items by cache key prefix
         /// </summary>
-        /// <param name="prefix">Cache key prefix</param>
+        /// <param name="prefix_">Cache key prefix</param>
         /// <param name="prefixParameters">Parameters to create cache key prefix</param>
         /// <returns>A task that represents the asynchronous operation</returns>
         public override async Task RemoveByPrefixAsync(string prefix, params object[] prefixParameters)
         {
-            prefix = PrepareKeyPrefix(prefix, prefixParameters);
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters).ToLowerInvariant();
             var db = await _connectionWrapper.GetDatabaseAsync();
 
             foreach (var endPoint in await _connectionWrapper.GetEndPointsAsync())
             {
-                var keys = await GetKeysAsync(endPoint, prefix);
+                var keys = await GetKeysAsync(endPoint, prefix_);
                 db.KeyDelete(keys.ToArray());
             }
 
-            RemoveByPrefixInstanceData(prefix);
+            RemoveByPrefixInstanceData(prefix_);
         }
 
         /// <summary>

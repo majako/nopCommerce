@@ -59,7 +59,7 @@ namespace Nop.Core.Caching
         /// <returns>The removed keys</returns>
         protected IEnumerable<string> RemoveByPrefixInstanceData(string prefix, params object[] prefixParameters)
         {
-            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters);
+            var prefix_ = PrepareKeyPrefix(prefix, prefixParameters).ToLowerInvariant();
             _perRequestCache.Prune(prefix_, out _);
             return _localKeys.Prune(prefix_, out var subtree)
                 ? subtree.Keys
