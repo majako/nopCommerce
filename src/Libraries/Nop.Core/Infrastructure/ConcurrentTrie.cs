@@ -86,8 +86,7 @@ namespace Nop.Core.Infrastructure
                 throw new ArgumentNullException(nameof(key));
 
             value = default;
-            var found = Find(key.ToLowerInvariant(), out var node) && node.GetValue(out value);
-            return found;
+            return Find(key, out var node) && node.GetValue(out value);
         }
 
         /// <summary>
@@ -100,8 +99,7 @@ namespace Nop.Core.Infrastructure
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
 
-            var node = GetOrAddNode(key.ToLowerInvariant());
-            node.SetValue(value);
+            GetOrAddNode(key).SetValue(value);
         }
 
         /// <summary>
@@ -138,7 +136,7 @@ namespace Nop.Core.Infrastructure
                         yield return kv;
                 }
             }
-            return traverse(node, prefix.ToLowerInvariant());
+            return traverse(node, prefix);
         }
 
         /// <summary>
@@ -147,7 +145,7 @@ namespace Nop.Core.Infrastructure
         /// <param name="key">The key of the item to be removed (case-insensitive)</param>
         public void Remove(string key)
         {
-            Remove(_root, key.ToLowerInvariant());
+            Remove(_root, key);
         }
 
         /// <summary>
@@ -160,7 +158,7 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public TValue GetOrAdd(string key, Func<TValue> valueFactory)
         {
-            var node = GetOrAddNode(key.ToLowerInvariant());
+            var node = GetOrAddNode(key);
             if (node.GetValue(out var value))
                 return value;
             value = valueFactory();
@@ -185,7 +183,7 @@ namespace Nop.Core.Infrastructure
             var node = _root;
             TrieNode parent = null;
             char last = default;
-            foreach (var c in prefix.ToLowerInvariant())
+            foreach (var c in prefix)
             {
                 parent = node;
                 if (!node.Children.TryGetValue(c, out node))

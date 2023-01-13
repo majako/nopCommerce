@@ -33,6 +33,14 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
         }
 
         [Test]
+        public async Task IgnoresKeyCase()
+        {
+            await _staticCacheManager.SetAsync(new CacheKey("Some_Key_1"), 3);
+            var rez = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => 0);
+            rez.Should().Be(3);
+        }
+
+        [Test]
         public async Task CanValidateWhetherObjectIsCached()
         {
             await _staticCacheManager.SetAsync(new CacheKey("some_key_1"), 3);
@@ -53,6 +61,23 @@ namespace Nop.Tests.Nop.Core.Tests.Caching
 
             var rez = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => Task.FromResult((object)null));
             rez.Should().BeNull();
+        }
+
+        [Test]
+        public async Task CanRemoveByPrefix()
+        {
+            await _staticCacheManager.SetAsync(new CacheKey("some_key_1"), 1);
+            await _staticCacheManager.SetAsync(new CacheKey("some_key_2"), 2);
+            await _staticCacheManager.SetAsync(new CacheKey("some_other_key"), 3);
+
+            await _staticCacheManager.RemoveByPrefixAsync("Some_Key");
+
+            var result = await _staticCacheManager.GetAsync(new CacheKey("some_key_1"), () => Task.FromResult((object)null));
+            result.Should().BeNull();
+            result = await _staticCacheManager.GetAsync(new CacheKey("some_key_2"), () => Task.FromResult((object)null));
+            result.Should().BeNull();
+            result = await _staticCacheManager.GetAsync(new CacheKey("some_other_key"), () => 0);
+            result.Should().Be(3);
         }
 
         [Test]

@@ -83,6 +83,9 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             sut.Prune("ab", out var subtree).Should().BeTrue();
             subtree.Keys.Should().BeEquivalentTo(new[] { "ab", "abc", "abd" });
             sut.Keys.Should().BeEquivalentTo(new[] { "a", "b" });
+            sut.Prune("b", out subtree).Should().BeTrue();
+            subtree.Keys.Should().BeEquivalentTo(new[] { "b" });
+            sut.Keys.Should().BeEquivalentTo(new[] { "a" });
         }
 
         [Test]

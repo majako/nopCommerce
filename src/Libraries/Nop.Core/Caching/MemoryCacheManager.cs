@@ -51,7 +51,7 @@ namespace Nop.Core.Caching
             //add token to clear cache entries
             options.AddExpirationToken(new CancellationChangeToken(_clearToken.Token));
             options.RegisterPostEvictionCallback(OnEviction);
-            _keys.Add(key.Key, default);
+            _keys.Add(key.Key.ToLowerInvariant(), default);
 
             return options;
         }
@@ -84,8 +84,9 @@ namespace Nop.Core.Caching
         /// <returns>A task that represents the asynchronous operation</returns>
         public Task RemoveAsync(CacheKey cacheKey, params object[] cacheKeyParameters)
         {
-            _memoryCache.Remove(PrepareKey(cacheKey, cacheKeyParameters).Key);
-            _keys.Remove(cacheKey.Key);
+            var key = PrepareKey(cacheKey, cacheKeyParameters).Key.ToLowerInvariant();
+            _memoryCache.Remove(key);
+            _keys.Remove(key);
             return Task.CompletedTask;
         }
 
@@ -104,11 +105,13 @@ namespace Nop.Core.Caching
             if ((key?.CacheTime ?? 0) <= 0)
                 return await acquire();
 
-            var value = await _memoryCache.GetOrCreate(key.Key, entry =>
-            {
-                entry.SetOptions(PrepareEntryOptions(key));
-                return new Lazy<Task<T>>(acquire, true);
-            }).Value;
+            var value = await _memoryCache.GetOrCreate(
+                key.Key.ToLowerInvariant(),
+                entry =>
+                {
+                    entry.SetOptions(PrepareEntryOptions(key));
+                    return new Lazy<Task<T>>(acquire, true);
+                }).Value;
             if (value == null)
                 await RemoveAsync(key);
             return value;
@@ -140,7 +143,7 @@ namespace Nop.Core.Caching
             if (data != null && (key?.CacheTime ?? 0) > 0)
             {
                 _memoryCache.Set(
-                    key.Key,
+                    key.Key.ToLowerInvariant(),
                     new Lazy<Task<T>>(() => Task.FromResult(data), true),
                     PrepareEntryOptions(key));
             }
