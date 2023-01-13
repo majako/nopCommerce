@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace Nop.Core.Infrastructure
 {
@@ -12,23 +13,40 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
+            private readonly ReaderWriterLockSlim _lock = new();
             private (bool hasValue, TValue value) _value;
-            public ConcurrentDictionary<char, TrieNode> Children = new();
+            public readonly ConcurrentDictionary<char, TrieNode> Children = new();
 
             public bool GetValue(out TValue value)
             {
-                (var hasValue, value) = _value;
-                return hasValue;
+                _lock.EnterReadLock();
+                try
+                {
+                    (var hasValue, value) = _value;
+                    return hasValue;
+                }
+                finally
+                {
+                    _lock.ExitReadLock();
+                }
             }
 
             public void SetValue(TValue value)
             {
-                _value = (true, value);
+                _lock.EnterWriteLock();
+                try
+                {
+                    _value = (true, value);
+                }
+                finally
+                {
+                    _lock.ExitWriteLock();
+                }
             }
 
             public void RemoveValue()
             {
-                _value = default;
+                SetValue(default);
             }
         }
 
