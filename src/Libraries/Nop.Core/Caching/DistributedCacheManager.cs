@@ -49,6 +49,7 @@ namespace Nop.Core.Caching
         protected void ClearInstanceData()
         {
             _perRequestCache.Clear();
+            _localKeys.Clear();
         }
 
         /// <summary>
