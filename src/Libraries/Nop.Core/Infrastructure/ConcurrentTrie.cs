@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nop.Core.Infrastructure
@@ -16,7 +14,7 @@ namespace Nop.Core.Infrastructure
         {
             private readonly ReaderWriterLockSlim _lock = new();
             private (bool hasValue, TValue value) _value;
-            public readonly ConcurrentDictionary<string, TrieNode> Children = new();
+            public readonly SortedList<string, TrieNode> Children = new();
 
             public bool GetValue(out TValue value)
             {
@@ -40,6 +38,22 @@ namespace Nop.Core.Infrastructure
             public void RemoveValue()
             {
                 SetValue(default, false);
+            }
+
+            public int FindFirst(string key)
+            {
+                if (Children.Count == 0) return -1;
+                var lo = 0;
+                var hi = Children.Count - 1;
+                while (lo <= hi)
+                {
+                    var i = lo + ((hi - lo) >> 1);
+                    var cmp = Children.Comparer.Compare(key, Children.GetKeyAtIndex(i));
+                    if (cmp == 0) return i;
+                    if (cmp > 0) lo = i + 1;
+                    else hi = i - 1;
+                }
+                return lo < Children.Count && Children.GetKeyAtIndex(lo).StartsWith(key) ? lo : -1;
             }
 
             private void SetValue(TValue value, bool hasValue)
@@ -209,20 +223,18 @@ namespace Nop.Core.Infrastructure
                 if (index < 0)
                 {
                     var nextKey = ReadOnlySpan<char>.Empty;
-                    foreach (var (k, v) in node.Children)
+                    var i = node.FindFirst(suffix.ToString());
+                    if (i >= 0)
                     {
-                        var span = k.AsSpan();
-                        if (span.StartsWith(suffix))
-                        {
-                            nextKey = span[suffix.Length..];
-                            nextNode = v;
-                            break;
-                        }
+                        nextKey = node.Children.GetKeyAtIndex(i).AsSpan()[suffix.Length..];
+                        nextNode = node.Children.GetValueAtIndex(i);
                     }
-                    node = node.Children.GetOrAdd(suffix.ToString(), _ => new());
+                    var splitNode = new TrieNode();
+                    node.Children.Add(suffix.ToString(), splitNode);
+                    node = splitNode;
                     if (!nextKey.IsEmpty)
-                        node.Children.GetOrAdd(nextKey.ToString(), nextNode);
-                    return node;
+                        splitNode.Children.Add(nextKey.ToString(), nextNode);
+                    return splitNode;
                 }
                 suffix = suffix[index..];
                 node = nextNode;
