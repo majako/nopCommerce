@@ -1,4 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using FluentAssertions;
 using Nop.Core.Infrastructure;
@@ -34,6 +37,54 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             value.Should().Be(1);
             sut.TryGetValue("abc", out value).Should().BeTrue();
             value.Should().Be(3);
+            sut.Add("ab", 2);
+            sut.TryGetValue("ab", out value).Should().BeTrue();
+            value.Should().Be(2);
+        }
+
+        [Test]
+        public void CanAddAndGetValues2()
+        {
+            var sut = new ConcurrentTrie<int>();
+            sut.Add("abc", 3);
+            sut.Add("a", 1);
+            sut.TryGetValue("abc", out var value).Should().BeTrue();
+            value.Should().Be(3);
+            sut.TryGetValue("a", out value).Should().BeTrue();
+            value.Should().Be(1);
+            sut.Add("ac", 2);
+            sut.TryGetValue("ac", out value).Should().BeTrue();
+            value.Should().Be(2);
+        }
+
+        [Test]
+        public void MemoryUsageDict()
+        {
+            var sut = new ConcurrentDictionary<string, int>();
+            var sw = new Stopwatch();
+            var memory = GC.GetTotalMemory(true);
+            sw.Start();
+            for (var i = 0; i < 1000; i++)
+                sut.TryAdd(Guid.NewGuid().ToString(), 0);
+            sw.Stop();
+            var delta = GC.GetTotalMemory(false) - memory;
+            Console.WriteLine(sw.ElapsedMilliseconds);
+            Console.WriteLine(delta);
+        }
+
+        [Test]
+        public void MemoryUsage()
+        {
+            var sut = new ConcurrentTrie<int>();
+            var sw = new Stopwatch();
+            var memory = GC.GetTotalMemory(true);
+            sw.Start();
+            for (var i = 0; i < 1000; i++)
+                sut.Add(Guid.NewGuid().ToString(), 0);
+            sw.Stop();
+            var delta = GC.GetTotalMemory(false) - memory;
+            Console.WriteLine(sw.ElapsedMilliseconds);
+            Console.WriteLine(delta);
         }
 
         [Test]

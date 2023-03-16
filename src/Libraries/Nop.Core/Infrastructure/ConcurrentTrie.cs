@@ -7,7 +7,7 @@ using System.Threading;
 namespace Nop.Core.Infrastructure
 {
     /// <summary>
-    /// A thread-safe implementation of a trie, or prefix tree
+    /// A thread-safe implementation of a radix tree
     /// </summary>
     public class ConcurrentTrie<TValue>
     {
@@ -15,7 +15,7 @@ namespace Nop.Core.Infrastructure
         {
             private readonly ReaderWriterLockSlim _lock = new();
             private (bool hasValue, TValue value) _value;
-            public readonly ConcurrentDictionary<char, TrieNode> Children = new();
+            public readonly ConcurrentDictionary<string, TrieNode> Children = new();
 
             public bool GetValue(out TValue value)
             {
@@ -176,59 +176,79 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public bool Prune(string prefix, out ConcurrentTrie<TValue> subtree)
         {
-            if (string.IsNullOrEmpty(prefix))
-                throw new ArgumentException($"'{nameof(prefix)}' cannot be null or empty.", nameof(prefix));
+            throw new NotImplementedException();
+            // if (string.IsNullOrEmpty(prefix))
+            //     throw new ArgumentException($"'{nameof(prefix)}' cannot be null or empty.", nameof(prefix));
 
-            subtree = default;
-            var node = _root;
-            TrieNode parent = null;
-            char last = default;
-            foreach (var c in prefix)
-            {
-                parent = node;
-                if (!node.Children.TryGetValue(c, out node))
-                    return false;
-                last = c;
-            }
-            if (parent?.Children.TryRemove(last, out var subtreeRoot) == true)
-                subtree = new ConcurrentTrie<TValue>(subtreeRoot, prefix);
-            return true;
+            // subtree = default;
+            // var node = _root;
+            // Node parent = null;
+            // char last = default;
+            // foreach (var c in prefix)
+            // {
+            //     parent = node;
+            //     if (!node.Children.TryGetValue(c, out node))
+            //         return false;
+            //     last = c;
+            // }
+            // if (parent?.Children.TryRemove(last, out var subtreeRoot) == true)
+            //     subtree = new ConcurrentRadixTree<TValue>(subtreeRoot, prefix);
+            // return true;
         }
 
         private TrieNode GetOrAddNode(string key)
         {
             var node = _root;
-            foreach (var c in key)
-                node = node.Children.GetOrAdd(c, _ => new());
-            return node;
+            var suffix = key;
+            while (true)
+            {
+                var (nextKey, nextNode) = node.Children.FirstOrDefault(kv => suffix.StartsWith(kv.Key));
+                if (nextKey == default)
+                {
+                    (nextKey, nextNode) = node.Children.FirstOrDefault(kv => kv.Key.StartsWith(suffix));
+                    node = node.Children.GetOrAdd(suffix, _ => new());
+                    if (nextKey != default)
+                        node.Children.GetOrAdd(nextKey[suffix.Length..], nextNode);
+                    return node;
+                }
+                if (nextKey.Length == suffix.Length)
+                    return nextNode;
+                suffix = suffix[nextKey.Length..];
+                node = nextNode;
+            }
         }
 
         private bool Find(string key, out TrieNode node)
         {
             node = _root;
-            foreach (var c in key)
+            var suffix = key;
+            while (true)
             {
-                if (!node.Children.TryGetValue(c, out node))
+                (var nextKey, node) = node.Children.FirstOrDefault(kv => suffix.StartsWith(kv.Key));
+                if (nextKey == default)
                     return false;
+                if (nextKey.Length == suffix.Length)
+                    return node.GetValue(out _);
+                suffix = suffix[nextKey.Length..];
             }
-            return true;
         }
 
         private bool Remove(TrieNode node, string key)
         {
-            if (key.Length == 0)
-            {
-                if (node.GetValue(out _))
-                    node.RemoveValue();
-                return !node.Children.IsEmpty;
-            }
-            var c = key[0];
-            if (node.Children.TryGetValue(c, out var child))
-            {
-                if (!Remove(child, key[1..]))
-                    node.Children.TryRemove(new(c, child));
-            }
-            return true;
+            throw new NotImplementedException();
+            // if (key.Length == 0)
+            // {
+            //     if (node.GetValue(out _))
+            //         node.RemoveValue();
+            //     return !node.Children.IsEmpty;
+            // }
+            // var c = key[0];
+            // if (node.Children.TryGetValue(c, out var child))
+            // {
+            //     if (!Remove(child, key[1..]))
+            //         node.Children.TryRemove(new(c, child));
+            // }
+            // return true;
         }
     }
 }
