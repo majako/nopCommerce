@@ -242,6 +242,8 @@ namespace Nop.Core.Infrastructure
         private bool Find(string key, out TrieNode node)
         {
             node = _root;
+            if (key.Length == 0)
+                return true;
             var suffix = key.AsSpan();
             while (true)
             {
