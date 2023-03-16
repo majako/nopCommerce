@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nop.Core.Infrastructure
@@ -199,37 +200,57 @@ namespace Nop.Core.Infrastructure
         private TrieNode GetOrAddNode(string key)
         {
             var node = _root;
-            var suffix = key;
+            var suffix = key.AsSpan();
             while (true)
             {
-                var (nextKey, nextNode) = node.Children.FirstOrDefault(kv => suffix.StartsWith(kv.Key));
-                if (nextKey == default)
+                var (index, nextNode) = GetMatch(suffix, node);
+                if (index == suffix.Length)
+                    return nextNode;
+                if (index < 0)
                 {
-                    (nextKey, nextNode) = node.Children.FirstOrDefault(kv => kv.Key.StartsWith(suffix));
-                    node = node.Children.GetOrAdd(suffix, _ => new());
-                    if (nextKey != default)
-                        node.Children.GetOrAdd(nextKey[suffix.Length..], nextNode);
+                    var nextKey = ReadOnlySpan<char>.Empty;
+                    foreach (var (k, v) in node.Children)
+                    {
+                        var span = k.AsSpan();
+                        if (span.StartsWith(suffix))
+                        {
+                            nextKey = span[suffix.Length..];
+                            nextNode = v;
+                            break;
+                        }
+                    }
+                    node = node.Children.GetOrAdd(suffix.ToString(), _ => new());
+                    if (!nextKey.IsEmpty)
+                        node.Children.GetOrAdd(nextKey.ToString(), nextNode);
                     return node;
                 }
-                if (nextKey.Length == suffix.Length)
-                    return nextNode;
-                suffix = suffix[nextKey.Length..];
+                suffix = suffix[index..];
                 node = nextNode;
             }
+        }
+
+        private static (int, TrieNode) GetMatch(ReadOnlySpan<char> key, TrieNode node)
+        {
+            for (var i = 1; i <= key.Length; i++)
+            {
+                if (node.Children.TryGetValue(key[..i].ToString(), out var value))
+                    return (i, value);
+            }
+            return (-1, default);
         }
 
         private bool Find(string key, out TrieNode node)
         {
             node = _root;
-            var suffix = key;
+            var suffix = key.AsSpan();
             while (true)
             {
-                (var nextKey, node) = node.Children.FirstOrDefault(kv => suffix.StartsWith(kv.Key));
-                if (nextKey == default)
+                (var index, node) = GetMatch(suffix, node);
+                if (index < 0)
                     return false;
-                if (nextKey.Length == suffix.Length)
+                if (index == suffix.Length)
                     return node.GetValue(out _);
-                suffix = suffix[nextKey.Length..];
+                suffix = suffix[index..];
             }
         }
 

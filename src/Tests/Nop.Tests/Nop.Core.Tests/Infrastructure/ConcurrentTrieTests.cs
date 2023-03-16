@@ -64,10 +64,10 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
-            for (var i = 0; i < 1000; i++)
+            for (var i = 0; i < 10000; i++)
                 sut.TryAdd(Guid.NewGuid().ToString(), 0);
             sw.Stop();
-            var delta = GC.GetTotalMemory(false) - memory;
+            var delta = GC.GetTotalMemory(true) - memory;
             Console.WriteLine(sw.ElapsedMilliseconds);
             Console.WriteLine(delta);
         }
@@ -75,14 +75,15 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         [Test]
         public void MemoryUsage()
         {
+            // var sut = new Gma.DataStructures.StringSearch.ConcurrentTrie<int>();
             var sut = new ConcurrentTrie<int>();
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
-            for (var i = 0; i < 1000; i++)
+            for (var i = 0; i < 10000; i++)
                 sut.Add(Guid.NewGuid().ToString(), 0);
             sw.Stop();
-            var delta = GC.GetTotalMemory(false) - memory;
+            var delta = GC.GetTotalMemory(true) - memory;
             Console.WriteLine(sw.ElapsedMilliseconds);
             Console.WriteLine(delta);
         }
