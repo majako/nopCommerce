@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nop.Core.Infrastructure;
 using NUnit.Framework;
@@ -42,16 +43,38 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        [Ignore("Not a test, used for profiling")]
+        // [Ignore("Not a test, used for profiling")]
         public void Profile()
         {
-            // var sut = new Gma.DataStructures.StringSearch.ConcurrentTrie<int>();
             var sut = new ConcurrentTrie<int>();
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
             for (var i = 0; i < 1000000; i++)
                 sut.Add(Guid.NewGuid().ToString(), 0);
+            sw.Stop();
+            var delta = GC.GetTotalMemory(true) - memory;
+            Console.WriteLine(sw.ElapsedMilliseconds);
+            Console.WriteLine(delta);
+        }
+
+        [Test]
+        // [Ignore("Not a test, used for profiling")]
+        public void ProfileParallel()
+        {
+            var sut = new ConcurrentTrie<int>();
+            var sw = new Stopwatch();
+            var memory = GC.GetTotalMemory(true);
+            sw.Start();
+            Parallel.For(0, 10000, _ =>
+            {
+                var s = Guid.NewGuid().ToString();
+                for (var i = 0; i < 1000; i++)
+                {
+                    sut.Add(s[..(8 + Random.Shared.Next(24))], 0);
+                    sut.TryGetValue(s[..(8 + Random.Shared.Next(24))], out _);
+                }
+            });
             sw.Stop();
             var delta = GC.GetTotalMemory(true) - memory;
             Console.WriteLine(sw.ElapsedMilliseconds);

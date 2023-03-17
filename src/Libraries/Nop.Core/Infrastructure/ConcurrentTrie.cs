@@ -13,10 +13,11 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
-            private readonly ReaderWriterLockSlim _lock = new();
+            private static readonly StripedReaderWriterLock _locks = new();
             private (bool hasValue, TValue value) _value;
             public string Label;
             public readonly ConcurrentDictionary<char, TrieNode> Children = new();
+            public ReaderWriterLockSlim Lock => _locks.GetLock(this);
 
             public TrieNode(string label)
             {
@@ -25,7 +26,7 @@ namespace Nop.Core.Infrastructure
 
             public bool GetValue(out TValue value)
             {
-                _lock.EnterReadLock();
+                Lock.EnterReadLock();
                 try
                 {
                     (var hasValue, value) = _value;
@@ -33,7 +34,7 @@ namespace Nop.Core.Infrastructure
                 }
                 finally
                 {
-                    _lock.ExitReadLock();
+                    Lock.ExitReadLock();
                 }
             }
 
@@ -49,14 +50,14 @@ namespace Nop.Core.Infrastructure
 
             private void SetValue(TValue value, bool hasValue)
             {
-                _lock.EnterWriteLock();
+                Lock.EnterWriteLock();
                 try
                 {
                     _value = (hasValue, value);
                 }
                 finally
                 {
-                    _lock.ExitWriteLock();
+                    Lock.ExitWriteLock();
                 }
             }
         }
