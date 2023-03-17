@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -14,7 +15,13 @@ namespace Nop.Core.Infrastructure
         {
             private readonly ReaderWriterLockSlim _lock = new();
             private (bool hasValue, TValue value) _value;
-            public readonly SortedList<string, TrieNode> Children = new();
+            public string Label;
+            public readonly ConcurrentDictionary<char, TrieNode> Children = new();
+
+            public TrieNode(string label)
+            {
+                Label = label;
+            }
 
             public bool GetValue(out TValue value)
             {
@@ -40,22 +47,6 @@ namespace Nop.Core.Infrastructure
                 SetValue(default, false);
             }
 
-            public int FindFirst(string key)
-            {
-                if (Children.Count == 0) return -1;
-                var lo = 0;
-                var hi = Children.Count - 1;
-                while (lo <= hi)
-                {
-                    var i = lo + ((hi - lo) >> 1);
-                    var cmp = Children.Comparer.Compare(key, Children.GetKeyAtIndex(i));
-                    if (cmp == 0) return i;
-                    if (cmp > 0) lo = i + 1;
-                    else hi = i - 1;
-                }
-                return lo < Children.Count && Children.GetKeyAtIndex(lo).StartsWith(key) ? lo : -1;
-            }
-
             private void SetValue(TValue value, bool hasValue)
             {
                 _lock.EnterWriteLock();
@@ -77,7 +68,7 @@ namespace Nop.Core.Infrastructure
         public IEnumerable<TValue> Values => Search(string.Empty).Select(kv => kv.Value);
 
 
-        public ConcurrentTrie() : this(new(), string.Empty)
+        public ConcurrentTrie() : this(new(string.Empty), string.Empty)
         {
         }
 
@@ -217,38 +208,30 @@ namespace Nop.Core.Infrastructure
             var suffix = key.AsSpan();
             while (true)
             {
-                var (index, nextNode) = GetMatch(suffix, node);
-                if (index == suffix.Length)
-                    return nextNode;
-                if (index < 0)
+                if (node.Children.TryGetValue(suffix[0], out var nextNode))
                 {
-                    var nextKey = ReadOnlySpan<char>.Empty;
-                    var i = node.FindFirst(suffix.ToString());
-                    if (i >= 0)
+                    var nextKey = nextNode.Label.AsSpan();
+                    var i = GetCommonPrefixLength(nextKey, suffix);
+                    if (i == nextKey.Length)   // suffix starts with nextKey
                     {
-                        nextKey = node.Children.GetKeyAtIndex(i).AsSpan()[suffix.Length..];
-                        nextNode = node.Children.GetValueAtIndex(i);
+                        if (i == suffix.Length)    // keys are equal
+                            return nextNode;
+                        suffix = suffix[nextKey.Length..];
+                        node = nextNode;
+                        continue;
                     }
-                    var splitNode = new TrieNode();
-                    node.Children.Add(suffix.ToString(), splitNode);
-                    node = splitNode;
-                    if (!nextKey.IsEmpty)
-                        splitNode.Children.Add(nextKey.ToString(), nextNode);
-                    return splitNode;
+                    var splitNode = new TrieNode(suffix[..i].ToString());
+                    node.Children[suffix[0]] = splitNode;
+                    nextNode.Label = nextKey[i..].ToString();
+                    splitNode.Children[nextKey[i]] = nextNode;
+                    if (i == suffix.Length) // nextKey starts with suffix
+                        return splitNode;
+                    node = new TrieNode(suffix[i..].ToString());
+                    splitNode.Children[suffix[i]] = node;
+                    return node;
                 }
-                suffix = suffix[index..];
-                node = nextNode;
+                return node.Children.GetOrAdd(suffix[0], new TrieNode(suffix.ToString()));
             }
-        }
-
-        private static (int, TrieNode) GetMatch(ReadOnlySpan<char> key, TrieNode node)
-        {
-            for (var i = 1; i <= key.Length; i++)
-            {
-                if (node.Children.TryGetValue(key[..i].ToString(), out var value))
-                    return (i, value);
-            }
-            return (-1, default);
         }
 
         private bool Find(string key, out TrieNode node)
@@ -259,13 +242,28 @@ namespace Nop.Core.Infrastructure
             var suffix = key.AsSpan();
             while (true)
             {
-                (var index, node) = GetMatch(suffix, node);
-                if (index < 0)
+                if (!node.Children.TryGetValue(suffix[0], out node))
                     return false;
-                if (index == suffix.Length)
-                    return node.GetValue(out _);
-                suffix = suffix[index..];
+                var span = node.Label.AsSpan();
+                var i = GetCommonPrefixLength(suffix, span);
+                if (i == span.Length)
+                {
+                    if (i == suffix.Length)
+                        return node.GetValue(out _);
+                    suffix = suffix[i..];
+                    continue;
+                }
+                return false;
             }
+        }
+
+        private static int GetCommonPrefixLength(ReadOnlySpan<char> s1, ReadOnlySpan<char> s2)
+        {
+            var i = 0;
+            var minLength = Math.Min(s1.Length, s2.Length);
+            for (; i < minLength && s2[i] == s1[i]; i++)
+                ;
+            return i;
         }
 
         private bool Remove(TrieNode node, string key)
