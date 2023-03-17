@@ -199,7 +199,8 @@ namespace Nop.Core.Infrastructure
                 if (!node.Children.TryGetValue(last, out node))
                     return false;
                 var label = node.Label.AsSpan();
-                if (span[i..] == label || label.StartsWith(span[i..]))
+                var k = GetCommonPrefixLength(span[i..], label);
+                if (k == span.Length - i)
                 {
                     if (parent.Children.TryRemove(last, out var root))
                     {
@@ -208,7 +209,7 @@ namespace Nop.Core.Infrastructure
                     }
                     return false;   // was removed by another thread
                 }
-                if (!span[i..].StartsWith(label))
+                if (k < label.Length)
                     return false;
                 i += node.Label.Length;
                 parent = node;

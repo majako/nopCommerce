@@ -105,6 +105,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             sut.Add("ab", 1);
             sut.Add("abc", 1);
             sut.Add("abd", 1);
+            sut.Prune("bc", out _).Should().BeFalse();
             sut.Prune("ab", out var subtree).Should().BeTrue();
             subtree.Keys.Should().BeEquivalentTo(new[] { "ab", "abc", "abd" });
             sut.Keys.Should().BeEquivalentTo(new[] { "a", "b", "bba", "bbb" });
