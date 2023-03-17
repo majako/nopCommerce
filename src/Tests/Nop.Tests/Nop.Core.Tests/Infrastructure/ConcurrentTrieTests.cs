@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -64,13 +63,22 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         {
             var sut = new ConcurrentTrie<int>();
             sut.Add("a", 1);
+            sut.Add("b", 1);
+            sut.Add("bbb", 1);
             sut.Add("ab", 1);
+            sut.Add("aa", 1);
             sut.Add("abc", 1);
+            sut.Add("abb", 1);
             sut.Remove("ab");
             sut.TryGetValue("ab", out _).Should().BeFalse();
-            sut.TryGetValue("abc", out _).Should().BeTrue();
-            sut.TryGetValue("a", out _).Should().BeTrue();
+            sut.Keys.Should().BeEquivalentTo(new[] { "abc", "a", "b", "aa", "abb", "bbb" });
             Assert.DoesNotThrow(() => sut.Remove("ab"));
+            sut.Remove("bb");
+            sut.TryGetValue("b", out _).Should().BeTrue();
+            sut.TryGetValue("bbb", out _).Should().BeTrue();
+            sut.Prune("b", out sut);
+            sut.Remove("b");
+            sut.Keys.Should().BeEquivalentTo(new[] { "bbb" });
         }
 
         [Test]

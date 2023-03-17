@@ -188,6 +188,15 @@ namespace Nop.Core.Infrastructure
             subtree = default;
             if (!prefix.StartsWith(_prefix))
                 return false;
+            if (prefix == _prefix)
+            {
+                var rootCopy = new TrieNode(_root.Label);
+                foreach (var (key, child) in _root.Children)
+                    rootCopy.Children.TryAdd(key, child);
+                subtree = new(rootCopy, prefix);
+                Clear();
+                return true;
+            }
             var node = _root;
             TrieNode parent = node;
             var span = prefix.AsSpan()[_prefix.Length..];
@@ -202,9 +211,9 @@ namespace Nop.Core.Infrastructure
                 var k = GetCommonPrefixLength(span[i..], label);
                 if (k == span.Length - i)
                 {
-                    if (parent.Children.TryRemove(last, out var root))
+                    if (parent.Children.TryRemove(last, out node))
                     {
-                        subtree = new ConcurrentTrie<TValue>(root, prefix);
+                        subtree = new(node, prefix);
                         return true;
                     }
                     return false;   // was removed by another thread
@@ -281,22 +290,41 @@ namespace Nop.Core.Infrastructure
             return i;
         }
 
-        private bool Remove(TrieNode node, string key)
+        private void Remove(TrieNode node, ReadOnlySpan<char> key)
         {
-            throw new NotImplementedException();
-            // if (key.Length == 0)
-            // {
-            //     if (node.GetValue(out _))
-            //         node.RemoveValue();
-            //     return !node.Children.IsEmpty;
-            // }
-            // var c = key[0];
-            // if (node.Children.TryGetValue(c, out var child))
-            // {
-            //     if (!Remove(child, key[1..]))
-            //         node.Children.TryRemove(new(c, child));
-            // }
-            // return true;
+            if (!key.StartsWith(_prefix))
+                return;
+            if (key == _prefix)
+            {
+                _root.RemoveValue();
+                return;
+            }
+            TrieNode parent = node;
+            var span = key[_prefix.Length..];
+            var i = 0;
+            char last = default;
+            while (i < span.Length)
+            {
+                last = span[i];
+                if (!node.Children.TryGetValue(last, out node))
+                    return;
+                var label = node.Label.AsSpan();
+                var k = GetCommonPrefixLength(span[i..], label);
+                if (k == label.Length && k == span.Length - i)
+                {
+                    node.RemoveValue();
+                    // if (parent.Children.TryRemove(last, out node))
+                    // {
+                        
+                    //     return;
+                    // }
+                    return;
+                }
+                if (k < label.Length)
+                    return;
+                i += node.Label.Length;
+                parent = node;
+            }
         }
     }
 }
