@@ -43,44 +43,15 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        public void CanAddAndGetValues2()
-        {
-            var sut = new ConcurrentTrie<int>();
-            sut.Add("abc", 3);
-            sut.Add("a", 1);
-            sut.TryGetValue("abc", out var value).Should().BeTrue();
-            value.Should().Be(3);
-            sut.TryGetValue("a", out value).Should().BeTrue();
-            value.Should().Be(1);
-            sut.Add("ac", 2);
-            sut.TryGetValue("ac", out value).Should().BeTrue();
-            value.Should().Be(2);
-        }
-
-        [Test]
-        public void MemoryUsageDict()
-        {
-            var sut = new ConcurrentDictionary<string, int>();
-            var sw = new Stopwatch();
-            var memory = GC.GetTotalMemory(true);
-            sw.Start();
-            for (var i = 0; i < 100000; i++)
-                sut.TryAdd(Guid.NewGuid().ToString(), 0);
-            sw.Stop();
-            var delta = GC.GetTotalMemory(true) - memory;
-            Console.WriteLine(sw.ElapsedMilliseconds);
-            Console.WriteLine(delta);
-        }
-
-        [Test]
-        public void MemoryUsage()
+        [Ignore("Not a test, used for profiling")]
+        public void Profile()
         {
             // var sut = new Gma.DataStructures.StringSearch.ConcurrentTrie<int>();
             var sut = new ConcurrentTrie<int>();
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
-            for (var i = 0; i < 100000; i++)
+            for (var i = 0; i < 1000000; i++)
                 sut.Add(Guid.NewGuid().ToString(), 0);
             sw.Stop();
             var delta = GC.GetTotalMemory(true) - memory;
@@ -129,15 +100,25 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             var sut = new ConcurrentTrie<int>();
             sut.Add("a", 1);
             sut.Add("b", 1);
+            sut.Add("bba", 1);
+            sut.Add("bbb", 1);
             sut.Add("ab", 1);
             sut.Add("abc", 1);
             sut.Add("abd", 1);
             sut.Prune("ab", out var subtree).Should().BeTrue();
             subtree.Keys.Should().BeEquivalentTo(new[] { "ab", "abc", "abd" });
-            sut.Keys.Should().BeEquivalentTo(new[] { "a", "b" });
+            sut.Keys.Should().BeEquivalentTo(new[] { "a", "b", "bba", "bbb" });
             sut.Prune("b", out subtree).Should().BeTrue();
-            subtree.Keys.Should().BeEquivalentTo(new[] { "b" });
+            subtree.Keys.Should().BeEquivalentTo(new[] { "b", "bba", "bbb" });
             sut.Keys.Should().BeEquivalentTo(new[] { "a" });
+            sut = subtree;
+            sut.Prune("bb", out subtree).Should().BeTrue();
+            subtree.Keys.Should().BeEquivalentTo(new[] { "bba", "bbb" });
+            sut.Keys.Should().BeEquivalentTo(new[] { "b" });
+            sut = subtree;
+            sut.Prune("bba", out subtree);
+            subtree.Keys.Should().BeEquivalentTo(new[] { "bba" });
+            sut.Keys.Should().BeEquivalentTo(new[] { "bbb" });
         }
 
         [Test]

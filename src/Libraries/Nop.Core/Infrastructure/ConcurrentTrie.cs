@@ -136,9 +136,9 @@ namespace Nop.Core.Infrastructure
             {
                 if (n.GetValue(out var value))
                     yield return new KeyValuePair<string, TValue>(_prefix + s, value);
-                foreach (var (c, child) in n.Children)
+                foreach (var child in n.Children.Values)
                 {
-                    foreach (var kv in traverse(child, s + c))
+                    foreach (var kv in traverse(child, s + child.Label))
                         yield return kv;
                 }
             }
@@ -182,24 +182,38 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public bool Prune(string prefix, out ConcurrentTrie<TValue> subtree)
         {
-            throw new NotImplementedException();
-            // if (string.IsNullOrEmpty(prefix))
-            //     throw new ArgumentException($"'{nameof(prefix)}' cannot be null or empty.", nameof(prefix));
+            if (string.IsNullOrEmpty(prefix))
+                throw new ArgumentException($"'{nameof(prefix)}' cannot be null or empty.", nameof(prefix));
 
-            // subtree = default;
-            // var node = _root;
-            // Node parent = null;
-            // char last = default;
-            // foreach (var c in prefix)
-            // {
-            //     parent = node;
-            //     if (!node.Children.TryGetValue(c, out node))
-            //         return false;
-            //     last = c;
-            // }
-            // if (parent?.Children.TryRemove(last, out var subtreeRoot) == true)
-            //     subtree = new ConcurrentRadixTree<TValue>(subtreeRoot, prefix);
-            // return true;
+            subtree = default;
+            if (!prefix.StartsWith(_prefix))
+                return false;
+            var node = _root;
+            TrieNode parent = node;
+            var span = prefix.AsSpan()[_prefix.Length..];
+            var i = 0;
+            char last = default;
+            while (i < span.Length)
+            {
+                last = span[i];
+                if (!node.Children.TryGetValue(last, out node))
+                    return false;
+                var label = node.Label.AsSpan();
+                if (span[i..] == label || label.StartsWith(span[i..]))
+                {
+                    if (parent.Children.TryRemove(last, out var root))
+                    {
+                        subtree = new ConcurrentTrie<TValue>(root, prefix);
+                        return true;
+                    }
+                    return false;   // was removed by another thread
+                }
+                if (!span[i..].StartsWith(label))
+                    return false;
+                i += node.Label.Length;
+                parent = node;
+            }
+            return false;
         }
 
         private TrieNode GetOrAddNode(string key)
