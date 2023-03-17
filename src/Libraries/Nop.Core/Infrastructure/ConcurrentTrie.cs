@@ -313,11 +313,17 @@ namespace Nop.Core.Infrastructure
                 if (k == label.Length && k == span.Length - i)
                 {
                     node.RemoveValue();
-                    // if (parent.Children.TryRemove(last, out node))
-                    // {
-                        
-                    //     return;
-                    // }
+                    if (node.Children.Count == 0)
+                        parent.Children.TryRemove(last, out _);
+                    else if (node.Children.Count == 1)
+                    {
+                        var child = node.Children.FirstOrDefault().Value;
+                        if (child != default)
+                        {
+                            child.Label = node.Label + child.Label;
+                            parent.Children[last] = child;
+                        }
+                    }
                     return;
                 }
                 if (k < label.Length)
