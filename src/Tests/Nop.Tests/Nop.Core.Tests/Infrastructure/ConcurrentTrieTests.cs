@@ -59,6 +59,16 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
+        public void Test()
+        {
+            var sut = new ConcurrentTrie<int>();
+            sut.Add("a", 0);
+            sut.Add("ab", 0);
+            foreach (var item in sut.Keys)
+                sut.Remove(item);
+        }
+
+        [Test]
         // [Ignore("Not a test, used for profiling")]
         public void ProfileParallel()
         {
@@ -74,6 +84,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
                     // var t = s[..(8 + Random.Shared.Next(24))];
                     sut.Add(s, default);
                     sut.Remove(s);
+                    sut.Keys.ToArray();
                 }
             });
             sw.Stop();

@@ -13,7 +13,7 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
-            private static StripedReaderWriterLock _locks = new();
+            private static readonly StripedReaderWriterLock _locks = new();
             public volatile string Label;
             public readonly Dictionary<char, TrieNode> Children = new();
             public ReaderWriterLockSlim Lock => _locks.GetLock(this);
@@ -111,14 +111,14 @@ namespace Nop.Core.Infrastructure
             // depth-first traversal
             IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
-                var rw = n.Lock;
-                var lockAlreadyHeld = !heldLocks.Add(rw);
+                if (_values.TryGetValue(n, out var value))
+                    yield return new KeyValuePair<string, TValue>(_prefix + s, value);
+                var nLock = n.Lock;
+                var lockAlreadyHeld = !heldLocks.Add(nLock);
                 if (!lockAlreadyHeld)
-                    n.Lock.EnterReadLock();
+                    nLock.EnterReadLock();
                 try
                 {
-                    if (_values.TryGetValue(n, out var value))
-                        yield return new KeyValuePair<string, TValue>(_prefix + s, value);
                     foreach (var child in n.Children.Values)
                     {
                         foreach (var kv in traverse(child, s + child.Label))
@@ -128,7 +128,7 @@ namespace Nop.Core.Infrastructure
                 finally
                 {
                     if (!lockAlreadyHeld)
-                        n.Lock.ExitReadLock();
+                        nLock.ExitReadLock();
                 }
             }
             return traverse(node, prefix);
@@ -232,12 +232,12 @@ namespace Nop.Core.Infrastructure
             var node = _root;
             var suffix = key.AsSpan();
             char c;
-            ReaderWriterLockSlim rw;
+            ReaderWriterLockSlim nodeLock;
             while (true)
             {
                 c = suffix[0];
-                rw = node.Lock;
-                rw.EnterUpgradeableReadLock();
+                nodeLock = node.Lock;
+                nodeLock.EnterUpgradeableReadLock();
                 try
                 {
                     if (node.Children.TryGetValue(c, out var nextNode))
@@ -260,20 +260,20 @@ namespace Nop.Core.Infrastructure
                             outNode = splitNode;
                         else
                             splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
-                        rw.EnterWriteLock();
+                        nodeLock.EnterWriteLock();
                         node.Children[c] = splitNode;
-                        rw.ExitWriteLock();
+                        nodeLock.ExitWriteLock();
                         return outNode;
                     }
-                    var n = new TrieNode(suffix.ToString());
-                    rw.EnterWriteLock();
-                    node.Children[c] = n;
-                    rw.ExitWriteLock();
-                    return n;
+                    var suffixNode = new TrieNode(suffix.ToString());
+                    nodeLock.EnterWriteLock();
+                    node.Children[c] = suffixNode;
+                    nodeLock.ExitWriteLock();
+                    return suffixNode;
                 }
                 finally
                 {
-                    rw.ExitUpgradeableReadLock();
+                    nodeLock.ExitUpgradeableReadLock();
                 }
             }
         }
