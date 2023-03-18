@@ -13,9 +13,10 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
+            private static StripedReaderWriterLock _locks = new();
             public volatile string Label;
             public readonly Dictionary<char, TrieNode> Children = new();
-            public readonly ReaderWriterLockSlim Lock = new();
+            public ReaderWriterLockSlim Lock => _locks.GetLock(this);
 
             public TrieNode(string label)
             {
@@ -105,18 +106,30 @@ namespace Nop.Core.Infrastructure
             if (!Find(prefix, out var node))
                 return Enumerable.Empty<KeyValuePair<string, TValue>>();
 
+            var heldLocks = new HashSet<ReaderWriterLockSlim>();
+
             // depth-first traversal
             IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
-                n.Lock.EnterReadLock();
-                if (_values.TryGetValue(n, out var value))
-                    yield return new KeyValuePair<string, TValue>(_prefix + s, value);
-                foreach (var child in n.Children.Values)
+                var rw = n.Lock;
+                var lockAlreadyHeld = !heldLocks.Add(rw);
+                if (!lockAlreadyHeld)
+                    n.Lock.EnterReadLock();
+                try
                 {
-                    foreach (var kv in traverse(child, s + child.Label))
-                        yield return kv;
+                    if (_values.TryGetValue(n, out var value))
+                        yield return new KeyValuePair<string, TValue>(_prefix + s, value);
+                    foreach (var child in n.Children.Values)
+                    {
+                        foreach (var kv in traverse(child, s + child.Label))
+                            yield return kv;
+                    }
                 }
-                n.Lock.ExitReadLock();
+                finally
+                {
+                    if (!lockAlreadyHeld)
+                        n.Lock.ExitReadLock();
+                }
             }
             return traverse(node, prefix);
         }
@@ -247,15 +260,15 @@ namespace Nop.Core.Infrastructure
                             outNode = splitNode;
                         else
                             splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
-                        node.Lock.EnterWriteLock();
+                        rw.EnterWriteLock();
                         node.Children[c] = splitNode;
-                        node.Lock.ExitWriteLock();
+                        rw.ExitWriteLock();
                         return outNode;
                     }
                     var n = new TrieNode(suffix.ToString());
-                    node.Lock.EnterWriteLock();
+                    rw.EnterWriteLock();
                     node.Children[c] = n;
-                    node.Lock.ExitWriteLock();
+                    rw.ExitWriteLock();
                     return n;
                 }
                 finally
@@ -309,11 +322,11 @@ namespace Nop.Core.Infrastructure
             var parent = node;
             var span = key[_prefix.Length..];
             var i = 0;
-            char c;
             while (i < span.Length)
             {
-                c = span[i];
-                parent.Lock.EnterUpgradeableReadLock();
+                var c = span[i];
+                var parentLock = parent.Lock;
+                parentLock.EnterUpgradeableReadLock();
                 try
                 {
                     if (!parent.Children.TryGetValue(c, out node))
@@ -323,20 +336,23 @@ namespace Nop.Core.Infrastructure
                     if (k == label.Length && k == span.Length - i)
                     {
                         _values.TryRemove(node, out _);
-                        node.Lock.EnterReadLock();
+                        var nodeLock = node.Lock;
+                        var lockAlreadyHeld = nodeLock == parentLock;
+                        if (!lockAlreadyHeld)
+                            nodeLock.EnterReadLock();
                         try
                         {
                             var nChildren = node.Children.Count;
                             if (nChildren == 0)
                             {
-                                parent.Lock.EnterWriteLock();
+                                parentLock.EnterWriteLock();
                                 try
                                 {
                                     parent.Children.Remove(c, out _);
                                 }
                                 finally
                                 {
-                                    parent.Lock.ExitWriteLock();
+                                    parentLock.ExitWriteLock();
                                 }
                             }
                             else if (nChildren == 1)
@@ -345,21 +361,22 @@ namespace Nop.Core.Infrastructure
                                 if (child != default)
                                 {
                                     child.Label = node.Label + child.Label;
-                                    parent.Lock.EnterWriteLock();
+                                    parentLock.EnterWriteLock();
                                     try
                                     {
                                         parent.Children[c] = child;
                                     }
                                     finally
                                     {
-                                        parent.Lock.ExitWriteLock();
+                                        parentLock.ExitWriteLock();
                                     }
                                 }
                             }
                         }
                         finally
                         {
-                            node.Lock.ExitReadLock();
+                            if (!lockAlreadyHeld)
+                                nodeLock.ExitReadLock();
                         }
                         return;
                     }
@@ -369,7 +386,7 @@ namespace Nop.Core.Infrastructure
                 }
                 finally
                 {
-                    parent.Lock.ExitUpgradeableReadLock();
+                    parentLock.ExitUpgradeableReadLock();
                 }
                 parent = node;
             }

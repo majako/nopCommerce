@@ -43,7 +43,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        [Ignore("Not a test, used for profiling")]
+        // [Ignore("Not a test, used for profiling")]
         public void Profile()
         {
             var sut = new ConcurrentTrie<int>();
@@ -73,7 +73,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
                     var s = Guid.NewGuid().ToString();
                     // var t = s[..(8 + Random.Shared.Next(24))];
                     sut.Add(s, default);
-                    // sut.Remove(s);
+                    sut.Remove(s);
                 }
             });
             sw.Stop();
