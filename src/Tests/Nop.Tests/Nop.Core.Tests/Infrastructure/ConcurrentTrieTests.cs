@@ -59,21 +59,21 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        [Ignore("Not a test, used for profiling")]
+        // [Ignore("Not a test, used for profiling")]
         public void ProfileParallel()
         {
             var sut = new ConcurrentTrie<byte>();
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
-            Parallel.For(0, 1000, new ParallelOptions {MaxDegreeOfParallelism = 8}, _ =>
+            Parallel.For(0, 10, new ParallelOptions {MaxDegreeOfParallelism = 8}, _ =>
             {
-                for (var i = 0; i < 1000; i++)
+                for (var i = 0; i < 10; i++)
                 {
                     var s = Guid.NewGuid().ToString();
                     // var t = s[..(8 + Random.Shared.Next(24))];
                     sut.Add(s, default);
-                    sut.Remove(s);
+                    // sut.Remove(s);
                 }
             });
             sw.Stop();

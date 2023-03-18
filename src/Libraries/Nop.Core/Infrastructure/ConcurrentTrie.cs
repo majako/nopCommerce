@@ -162,8 +162,8 @@ namespace Nop.Core.Infrastructure
                 return false;
             if (prefix == _prefix)
             {
-                _root.Lock.EnterReadLock();
                 var rootCopy = new TrieNode(string.Empty);
+                _root.Lock.EnterReadLock();
                 foreach (var (key, child) in _root.Children)
                     rootCopy.Children.TryAdd(key, child);
                 _root.Lock.ExitReadLock();
@@ -218,24 +218,18 @@ namespace Nop.Core.Infrastructure
                         node = nextNode;
                         continue;
                     }
+                    nextNode.Label = nextKey[i..].ToString();
                     var splitNode = new TrieNode(suffix[..i].ToString());
-                    var rw = node.Lock;
-                    rw.EnterWriteLock();
-                    try
-                    {
-                        node.Children[suffix[0]] = splitNode;
-                        nextNode.Label = nextKey[i..].ToString();
-                        splitNode.Children[nextKey[i]] = nextNode;
-                        if (i == suffix.Length) // nextKey starts with suffix
-                            return splitNode;
-                        node = new TrieNode(suffix[i..].ToString());
-                        splitNode.Children[suffix[i]] = node;
-                        return node;
-                    }
-                    finally
-                    {
-                        rw.ExitWriteLock();
-                    }
+                    splitNode.Children[nextKey[i]] = nextNode;
+                    TrieNode outNode;
+                    if (i == suffix.Length) // nextKey starts with suffix
+                        outNode = splitNode;
+                    else
+                        splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
+                    node.Lock.EnterWriteLock();
+                    node.Children[suffix[0]] = splitNode;
+                    node.Lock.ExitWriteLock();
+                    return outNode;
                 }
                 var n = new TrieNode(suffix.ToString());
                 node.Lock.EnterWriteLock();
