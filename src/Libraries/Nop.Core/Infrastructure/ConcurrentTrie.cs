@@ -164,9 +164,15 @@ namespace Nop.Core.Infrastructure
             {
                 var rootCopy = new TrieNode(string.Empty);
                 _root.Lock.EnterReadLock();
-                foreach (var (key, child) in _root.Children)
-                    rootCopy.Children.TryAdd(key, child);
-                _root.Lock.ExitReadLock();
+                try
+                {
+                    foreach (var (key, child) in _root.Children)
+                        rootCopy.Children[key] = child;
+                }
+                finally
+                {
+                    _root.Lock.ExitReadLock();
+                }
                 subtree = new(rootCopy, prefix);
                 Clear();
                 return true;
@@ -179,16 +185,24 @@ namespace Nop.Core.Infrastructure
             while (i < span.Length)
             {
                 c = span[i];
-                if (!node.Children.TryGetValue(c, out node))
+                if (!node.Children.TryGetValue(c, out node) || node == default) // see footnote 1
                     return false;
                 var label = node.Label.AsSpan();
                 var k = GetCommonPrefixLength(span[i..], label);
                 if (k == span.Length - i)
                 {
-                    if (parent.Children.Remove(c, out node))
+                    parent.Lock.EnterWriteLock();
+                    try
                     {
-                        subtree = new(node, prefix);
-                        return true;
+                        if (parent.Children.Remove(c, out node))
+                        {
+                            subtree = new(node, prefix);
+                            return true;
+                        }
+                    }
+                    finally
+                    {
+                        parent.Lock.ExitWriteLock();
                     }
                     return false;   // was removed by another thread
                 }
@@ -259,7 +273,7 @@ namespace Nop.Core.Infrastructure
             var suffix = key.AsSpan();
             while (true)
             {
-                if (!node.Children.TryGetValue(suffix[0], out node) || node == default)
+                if (!node.Children.TryGetValue(suffix[0], out node) || node == default) // see footnote 1
                     return false;
                 var span = node.Label.AsSpan();
                 var i = GetCommonPrefixLength(suffix, span);
@@ -296,50 +310,75 @@ namespace Nop.Core.Infrastructure
             var span = key[_prefix.Length..];
             var i = 0;
             char c;
-            ReaderWriterLockSlim rw;
             while (i < span.Length)
             {
                 c = span[i];
-                rw = node.Lock;
-                rw.EnterUpgradeableReadLock();
+                parent.Lock.EnterUpgradeableReadLock();
                 try
                 {
-                    if (!node.Children.TryGetValue(c, out node))
+                    if (!parent.Children.TryGetValue(c, out node))
                         return;
                     var label = node.Label.AsSpan();
                     var k = GetCommonPrefixLength(span[i..], label);
                     if (k == label.Length && k == span.Length - i)
                     {
                         _values.TryRemove(node, out _);
-                        if (node.Children.Count == 0)
+                        node.Lock.EnterReadLock();
+                        try
                         {
-                            parent.Lock.EnterWriteLock();
-                            parent.Children.Remove(c, out _);
-                            parent.Lock.ExitWriteLock();
-                        }
-                        else if (node.Children.Count == 1)
-                        {
-                            var child = node.Children.FirstOrDefault().Value;
-                            if (child != default)
+                            var nChildren = node.Children.Count;
+                            if (nChildren == 0)
                             {
-                                child.Label = node.Label + child.Label;
                                 parent.Lock.EnterWriteLock();
-                                parent.Children[c] = child;
-                                parent.Lock.ExitWriteLock();
+                                try
+                                {
+                                    parent.Children.Remove(c, out _);
+                                }
+                                finally
+                                {
+                                    parent.Lock.ExitWriteLock();
+                                }
                             }
+                            else if (nChildren == 1)
+                            {
+                                var child = node.Children.FirstOrDefault().Value;
+                                if (child != default)
+                                {
+                                    child.Label = node.Label + child.Label;
+                                    parent.Lock.EnterWriteLock();
+                                    try
+                                    {
+                                        parent.Children[c] = child;
+                                    }
+                                    finally
+                                    {
+                                        parent.Lock.ExitWriteLock();
+                                    }
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            node.Lock.ExitReadLock();
                         }
                         return;
                     }
                     if (k < label.Length)
                         return;
                     i += label.Length;
-                    parent = node;
                 }
                 finally
                 {
-                    rw.ExitUpgradeableReadLock();
+                    parent.Lock.ExitUpgradeableReadLock();
                 }
+                parent = node;
             }
         }
     }
 }
+
+// Footnotes:
+// 
+// 1.   Since we optimistically get a value from a non-threadsafe dictionary,
+//      it could end up being null despite TryGetValue returning true, so we need to double-check it
+//
