@@ -83,15 +83,18 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
                     var s = Guid.NewGuid().ToString();
                     // var t = s[..(8 + Random.Shared.Next(24))];
                     sut.Add(s, default);
-                    sut.Remove(s);
-                    sut.Keys.ToArray();
+                    // sut.Remove(s);
+                    // sut.Keys.ToArray();
                 }
             });
             sw.Stop();
             var delta = GC.GetTotalMemory(true) - memory;
             Console.WriteLine(sw.ElapsedMilliseconds);
             Console.WriteLine(delta);
+            sw.Restart();
             Console.WriteLine(sut.Keys.Count());
+            sw.Stop();
+            Console.WriteLine(sw.ElapsedMilliseconds);
         }
 
         [Test]

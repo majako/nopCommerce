@@ -115,18 +115,21 @@ namespace Nop.Core.Infrastructure
                 var lockAlreadyHeld = nLock.IsReadLockHeld;
                 if (!lockAlreadyHeld)
                     nLock.EnterReadLock();
+                List<TrieNode> children;
                 try
                 {
-                    foreach (var child in n.Children.Values)
-                    {
-                        foreach (var kv in traverse(child, s + child.Label))
-                            yield return kv;
-                    }
+                    // we can't know what is done during enumeration, so we need to make a copy of the children
+                    children = n.Children.Values.ToList();
                 }
                 finally
                 {
                     if (!lockAlreadyHeld)
                         nLock.ExitReadLock();
+                }
+                foreach (var child in children)
+                {
+                    foreach (var kv in traverse(child, s + child.Label))
+                        yield return kv;
                 }
             }
             return traverse(node, prefix);
