@@ -261,14 +261,26 @@ namespace Nop.Core.Infrastructure
                         else
                             splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
                         nodeLock.EnterWriteLock();
-                        node.Children[c] = splitNode;
-                        nodeLock.ExitWriteLock();
+                        try
+                        {
+                            node.Children[c] = splitNode;
+                        }
+                        finally
+                        {
+                            nodeLock.ExitWriteLock();
+                        }
                         return outNode;
                     }
                     var suffixNode = new TrieNode(suffix.ToString());
                     nodeLock.EnterWriteLock();
-                    node.Children[c] = suffixNode;
-                    nodeLock.ExitWriteLock();
+                    try
+                    {
+                        node.Children[c] = suffixNode;
+                    }
+                    finally
+                    {
+                        nodeLock.ExitWriteLock();
+                    }
                     return suffixNode;
                 }
                 finally
