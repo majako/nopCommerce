@@ -184,7 +184,7 @@ namespace Nop.Core.Infrastructure
                 }
                 if (k < label.Length)
                     return false;
-                i += node.Label.Length;
+                i += label.Length;
                 parent = node;
             }
             return false;
@@ -301,7 +301,7 @@ namespace Nop.Core.Infrastructure
                 }
                 if (k < label.Length)
                     return;
-                i += node.Label.Length;
+                i += label.Length;
                 parent = node;
             }
         }
