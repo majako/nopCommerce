@@ -66,9 +66,9 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
-            Parallel.For(0, 10, new ParallelOptions {MaxDegreeOfParallelism = 8}, _ =>
+            Parallel.For(0, 1000, new ParallelOptions {MaxDegreeOfParallelism = 8}, _ =>
             {
-                for (var i = 0; i < 10; i++)
+                for (var i = 0; i < 1000; i++)
                 {
                     var s = Guid.NewGuid().ToString();
                     // var t = s[..(8 + Random.Shared.Next(24))];

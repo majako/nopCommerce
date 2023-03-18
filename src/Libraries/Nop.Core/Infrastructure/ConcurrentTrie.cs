@@ -172,20 +172,20 @@ namespace Nop.Core.Infrastructure
                 return true;
             }
             var node = _root;
-            TrieNode parent = node;
+            var parent = node;
             var span = prefix.AsSpan()[_prefix.Length..];
             var i = 0;
-            char last = default;
+            char c;
             while (i < span.Length)
             {
-                last = span[i];
-                if (!node.Children.TryGetValue(last, out node))
+                c = span[i];
+                if (!node.Children.TryGetValue(c, out node))
                     return false;
                 var label = node.Label.AsSpan();
                 var k = GetCommonPrefixLength(span[i..], label);
                 if (k == span.Length - i)
                 {
-                    if (parent.Children.Remove(last, out node))
+                    if (parent.Children.Remove(c, out node))
                     {
                         subtree = new(node, prefix);
                         return true;
@@ -204,38 +204,50 @@ namespace Nop.Core.Infrastructure
         {
             var node = _root;
             var suffix = key.AsSpan();
+            char c;
+            ReaderWriterLockSlim rw;
             while (true)
             {
-                if (node.Children.TryGetValue(suffix[0], out var nextNode))
+                c = suffix[0];
+                rw = node.Lock;
+                rw.EnterUpgradeableReadLock();
+                try
                 {
-                    var nextKey = nextNode.Label.AsSpan();
-                    var i = GetCommonPrefixLength(nextKey, suffix);
-                    if (i == nextKey.Length)   // suffix starts with nextKey
+                    if (node.Children.TryGetValue(c, out var nextNode))
                     {
-                        if (i == suffix.Length)    // keys are equal
-                            return nextNode;
-                        suffix = suffix[nextKey.Length..];
-                        node = nextNode;
-                        continue;
+                        var nextKey = nextNode.Label.AsSpan();
+                        var i = GetCommonPrefixLength(nextKey, suffix);
+                        if (i == nextKey.Length)   // suffix starts with nextKey
+                        {
+                            if (i == suffix.Length)    // keys are equal
+                                return nextNode;
+                            suffix = suffix[nextKey.Length..];
+                            node = nextNode;
+                            continue;
+                        }
+                        nextNode.Label = nextKey[i..].ToString();
+                        var splitNode = new TrieNode(suffix[..i].ToString());
+                        splitNode.Children[nextKey[i]] = nextNode;
+                        TrieNode outNode;
+                        if (i == suffix.Length) // nextKey starts with suffix
+                            outNode = splitNode;
+                        else
+                            splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
+                        node.Lock.EnterWriteLock();
+                        node.Children[c] = splitNode;
+                        node.Lock.ExitWriteLock();
+                        return outNode;
                     }
-                    nextNode.Label = nextKey[i..].ToString();
-                    var splitNode = new TrieNode(suffix[..i].ToString());
-                    splitNode.Children[nextKey[i]] = nextNode;
-                    TrieNode outNode;
-                    if (i == suffix.Length) // nextKey starts with suffix
-                        outNode = splitNode;
-                    else
-                        splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
+                    var n = new TrieNode(suffix.ToString());
                     node.Lock.EnterWriteLock();
-                    node.Children[suffix[0]] = splitNode;
+                    node.Children[c] = n;
                     node.Lock.ExitWriteLock();
-                    return outNode;
+                    return n;
                 }
-                var n = new TrieNode(suffix.ToString());
-                node.Lock.EnterWriteLock();
-                node.Children.Add(suffix[0], n);
-                node.Lock.ExitWriteLock();
-                return n;
+                finally
+                {
+                    rw.ExitUpgradeableReadLock();
+                }
             }
         }
 
@@ -247,7 +259,7 @@ namespace Nop.Core.Infrastructure
             var suffix = key.AsSpan();
             while (true)
             {
-                if (!node.Children.TryGetValue(suffix[0], out node))
+                if (!node.Children.TryGetValue(suffix[0], out node) || node == default)
                     return false;
                 var span = node.Label.AsSpan();
                 var i = GetCommonPrefixLength(suffix, span);
@@ -280,43 +292,53 @@ namespace Nop.Core.Infrastructure
                 _values.TryRemove(_root, out _);
                 return;
             }
-            TrieNode parent = node;
+            var parent = node;
             var span = key[_prefix.Length..];
             var i = 0;
-            char last = default;
+            char c;
+            ReaderWriterLockSlim rw;
             while (i < span.Length)
             {
-                last = span[i];
-                if (!node.Children.TryGetValue(last, out node))
-                    return;
-                var label = node.Label.AsSpan();
-                var k = GetCommonPrefixLength(span[i..], label);
-                if (k == label.Length && k == span.Length - i)
+                c = span[i];
+                rw = node.Lock;
+                rw.EnterUpgradeableReadLock();
+                try
                 {
-                    _values.TryRemove(node, out _);
-                    if (node.Children.Count == 0)
+                    if (!node.Children.TryGetValue(c, out node))
+                        return;
+                    var label = node.Label.AsSpan();
+                    var k = GetCommonPrefixLength(span[i..], label);
+                    if (k == label.Length && k == span.Length - i)
                     {
-                        parent.Lock.EnterWriteLock();
-                        parent.Children.Remove(last, out _);
-                        parent.Lock.ExitWriteLock();
-                    }
-                    else if (node.Children.Count == 1)
-                    {
-                        var child = node.Children.FirstOrDefault().Value;
-                        if (child != default)
+                        _values.TryRemove(node, out _);
+                        if (node.Children.Count == 0)
                         {
-                            child.Label = node.Label + child.Label;
                             parent.Lock.EnterWriteLock();
-                            parent.Children[last] = child;
+                            parent.Children.Remove(c, out _);
                             parent.Lock.ExitWriteLock();
                         }
+                        else if (node.Children.Count == 1)
+                        {
+                            var child = node.Children.FirstOrDefault().Value;
+                            if (child != default)
+                            {
+                                child.Label = node.Label + child.Label;
+                                parent.Lock.EnterWriteLock();
+                                parent.Children[c] = child;
+                                parent.Lock.ExitWriteLock();
+                            }
+                        }
+                        return;
                     }
-                    return;
+                    if (k < label.Length)
+                        return;
+                    i += label.Length;
+                    parent = node;
                 }
-                if (k < label.Length)
-                    return;
-                i += label.Length;
-                parent = node;
+                finally
+                {
+                    rw.ExitUpgradeableReadLock();
+                }
             }
         }
     }
