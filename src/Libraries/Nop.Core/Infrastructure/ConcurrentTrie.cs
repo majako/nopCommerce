@@ -14,7 +14,8 @@ namespace Nop.Core.Infrastructure
         private class TrieNode
         {
             public volatile string Label;
-            public readonly ConcurrentDictionary<char, TrieNode> Children = new();
+            public readonly Dictionary<char, TrieNode> Children = new();
+            public readonly ReaderWriterLockSlim Lock = new();
 
             public TrieNode(string label)
             {
@@ -81,7 +82,9 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         public void Clear()
         {
+            _root.Lock.EnterWriteLock();
             _root.Children.Clear();
+            _root.Lock.ExitWriteLock();
         }
 
         /// <summary>
@@ -102,6 +105,7 @@ namespace Nop.Core.Infrastructure
             // depth-first traversal
             IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
+                n.Lock.EnterReadLock();
                 if (_values.TryGetValue(n, out var value))
                     yield return new KeyValuePair<string, TValue>(_prefix + s, value);
                 foreach (var child in n.Children.Values)
@@ -109,6 +113,7 @@ namespace Nop.Core.Infrastructure
                     foreach (var kv in traverse(child, s + child.Label))
                         yield return kv;
                 }
+                n.Lock.ExitReadLock();
             }
             return traverse(node, prefix);
         }
@@ -154,9 +159,11 @@ namespace Nop.Core.Infrastructure
                 return false;
             if (prefix == _prefix)
             {
-                var rootCopy = new TrieNode(_root.Label);
+                _root.Lock.EnterReadLock();
+                var rootCopy = new TrieNode(string.Empty);
                 foreach (var (key, child) in _root.Children)
                     rootCopy.Children.TryAdd(key, child);
+                _root.Lock.ExitReadLock();
                 subtree = new(rootCopy, prefix);
                 Clear();
                 return true;
@@ -175,7 +182,7 @@ namespace Nop.Core.Infrastructure
                 var k = GetCommonPrefixLength(span[i..], label);
                 if (k == span.Length - i)
                 {
-                    if (parent.Children.TryRemove(last, out node))
+                    if (parent.Children.Remove(last, out node))
                     {
                         subtree = new(node, prefix);
                         return true;
@@ -208,9 +215,11 @@ namespace Nop.Core.Infrastructure
                         node = nextNode;
                         continue;
                     }
-                    lock(_lock)
+                    var splitNode = new TrieNode(suffix[..i].ToString());
+                    var rw = node.Lock;
+                    rw.EnterWriteLock();
+                    try
                     {
-                        var splitNode = new TrieNode(suffix[..i].ToString());
                         node.Children[suffix[0]] = splitNode;
                         nextNode.Label = nextKey[i..].ToString();
                         splitNode.Children[nextKey[i]] = nextNode;
@@ -219,12 +228,19 @@ namespace Nop.Core.Infrastructure
                         node = new TrieNode(suffix[i..].ToString());
                         _values[node] = valueFactory();
                         splitNode.Children[suffix[i]] = node;
+                        return node;
                     }
-                    return node;
+                    finally
+                    {
+                        rw.ExitWriteLock();
+                    }
                 }
-                node = node.Children.GetOrAdd(suffix[0], new TrieNode(suffix.ToString()));
-                _values[node] = valueFactory();
-                return node;
+                var n = new TrieNode(suffix.ToString());
+                node.Lock.EnterWriteLock();
+                node.Children.Add(suffix[0], n);
+                node.Lock.ExitWriteLock();
+                _values[n] = valueFactory();
+                return n;
             }
         }
 
@@ -282,19 +298,22 @@ namespace Nop.Core.Infrastructure
                 var k = GetCommonPrefixLength(span[i..], label);
                 if (k == label.Length && k == span.Length - i)
                 {
-                    lock(_lock)
+                    _values.TryRemove(node, out _);
+                    if (node.Children.Count == 0)
                     {
-                        _values.TryRemove(node, out _);
-                        if (node.Children.Count == 0)
-                            parent.Children.TryRemove(last, out _);
-                        else if (node.Children.Count == 1)
+                        parent.Lock.EnterWriteLock();
+                        parent.Children.Remove(last, out _);
+                        parent.Lock.ExitWriteLock();
+                    }
+                    else if (node.Children.Count == 1)
+                    {
+                        var child = node.Children.FirstOrDefault().Value;
+                        if (child != default)
                         {
-                            var child = node.Children.FirstOrDefault().Value;
-                            if (child != default)
-                            {
-                                child.Label = node.Label + child.Label;
-                                parent.Children[last] = child;
-                            }
+                            child.Label = node.Label + child.Label;
+                            parent.Lock.EnterWriteLock();
+                            parent.Children[last] = child;
+                            parent.Lock.ExitWriteLock();
                         }
                     }
                     return;

@@ -29,5 +29,10 @@ namespace Nop.Core.Infrastructure
         {
             return _locks[obj.GetHashCode() & _mask];
         }
+
+        public ReadOnlySpan<ReaderWriterLockSlim> GetAllLocks()
+        {
+            return _locks.AsSpan();
+        }
     }
 }
