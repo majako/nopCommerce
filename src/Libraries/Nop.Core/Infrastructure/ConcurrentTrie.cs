@@ -23,18 +23,20 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private readonly object _lock = new();
+        private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
         private readonly TrieNode _root;
         private readonly string _prefix;
-        private readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
 
+
+        /// <summary>
+        /// Gets a collection that contains the keys in the <see cref="ConcurrentTrie{TValue}" />
+        /// </summary>
         public IEnumerable<string> Keys => Search(string.Empty).Select(kv => kv.Key);
 
         /// <summary>
-        /// Gets a collection that contains the values in the <see cref="ConcurrentTrie{TValue}" />.
-        /// May not return values in the corresponding order as keys in <see cref="ConcurrentTrie{TValue}.Keys" />.
+        /// Gets a collection that contains the values in the <see cref="ConcurrentTrie{TValue}" />
         /// </summary>
-        public IEnumerable<TValue> Values => _values.Values;
+        public IEnumerable<TValue> Values => Search(string.Empty).Select(kv => kv.Value);
 
 
         public ConcurrentTrie() : this(new(string.Empty), string.Empty)
@@ -74,7 +76,8 @@ namespace Nop.Core.Infrastructure
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
 
-            GetOrAddNode(key, () => value);
+            var node = GetOrAddNode(key);
+            _values[node] = value;
         }
 
         /// <summary>
@@ -137,7 +140,7 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public TValue GetOrAdd(string key, Func<TValue> valueFactory)
         {
-            var node = GetOrAddNode(key, valueFactory);
+            var node = GetOrAddNode(key);
             return _values.GetOrAdd(node, _ => valueFactory());
         }
 
@@ -197,7 +200,7 @@ namespace Nop.Core.Infrastructure
             return false;
         }
 
-        private TrieNode GetOrAddNode(string key, Func<TValue> valueFactory)
+        private TrieNode GetOrAddNode(string key)
         {
             var node = _root;
             var suffix = key.AsSpan();
@@ -226,7 +229,6 @@ namespace Nop.Core.Infrastructure
                         if (i == suffix.Length) // nextKey starts with suffix
                             return splitNode;
                         node = new TrieNode(suffix[i..].ToString());
-                        _values[node] = valueFactory();
                         splitNode.Children[suffix[i]] = node;
                         return node;
                     }
@@ -239,7 +241,6 @@ namespace Nop.Core.Infrastructure
                 node.Lock.EnterWriteLock();
                 node.Children.Add(suffix[0], n);
                 node.Lock.ExitWriteLock();
-                _values[n] = valueFactory();
                 return n;
             }
         }
