@@ -106,15 +106,13 @@ namespace Nop.Core.Infrastructure
             if (!Find(prefix, out var node))
                 return Enumerable.Empty<KeyValuePair<string, TValue>>();
 
-            var heldLocks = new HashSet<ReaderWriterLockSlim>();
-
             // depth-first traversal
             IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
                 if (_values.TryGetValue(n, out var value))
                     yield return new KeyValuePair<string, TValue>(_prefix + s, value);
                 var nLock = n.Lock;
-                var lockAlreadyHeld = !heldLocks.Add(nLock);
+                var lockAlreadyHeld = nLock.IsReadLockHeld;
                 if (!lockAlreadyHeld)
                     nLock.EnterReadLock();
                 try
