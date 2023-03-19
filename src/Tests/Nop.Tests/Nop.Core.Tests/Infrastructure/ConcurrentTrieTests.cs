@@ -82,8 +82,9 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
                 {
                     var s = Guid.NewGuid().ToString();
                     sut.Add(s, default);
-                    // sut.Prune(s[..16], out var st);
-                    sut.Remove(s);
+                    // test one of the below operations
+                    sut.Prune(s[..16], out var st);
+                    // sut.Remove(s);
                 }
             });
             sw.Stop();

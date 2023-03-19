@@ -169,7 +169,7 @@ namespace Nop.Core.Infrastructure
                     {
                         if (parent.Children.Remove(c, out node))
                         {
-                            subtree = new(new TrieNode(prefix[..i] + node.Label, node));
+                            subtree = new(CopyNode(prefix[..i] + node.Label, node));
                             return true;
                         }
                     }
@@ -244,7 +244,7 @@ namespace Nop.Core.Infrastructure
                             continue;
                         }
                         var splitNode = new TrieNode(suffix[..i].ToString());
-                        splitNode.Children[nextKey[i]] = new TrieNode(nextKey[i..].ToString(), nextNode);
+                        splitNode.Children[nextKey[i]] = CopyNode(nextKey[i..].ToString(), nextNode);
                         TrieNode outNode;
                         if (i == suffix.Length) // nextKey starts with suffix
                             outNode = splitNode;
@@ -326,7 +326,7 @@ namespace Nop.Core.Infrastructure
                                     parentLock.EnterWriteLock();
                                     try
                                     {
-                                        parent.Children[c] = new TrieNode(node.Label + child.Label, child);
+                                        parent.Children[c] = CopyNode(node.Label + child.Label, child);
                                     }
                                     finally
                                     {
@@ -354,6 +354,14 @@ namespace Nop.Core.Infrastructure
             }
         }
 
+        private static TrieNode CopyNode(string label, TrieNode node)
+        {
+            var copy = new TrieNode(label, node);
+            if (_values.TryRemove(node, out var value))
+                _values[copy] = value;
+            return copy;
+        }
+
         private IEnumerable<InternalSearchResult> SearchInternal(TrieNode subtreeRoot, string prefix)
         {
             if (prefix is null)
@@ -368,9 +376,7 @@ namespace Nop.Core.Infrastructure
                 if (_values.TryGetValue(n, out var value))
                     yield return new InternalSearchResult(s, n, value);
                 var nLock = _locks.GetLock(n);
-                var lockAlreadyHeld = nLock.IsReadLockHeld;
-                if (!lockAlreadyHeld)
-                    nLock.EnterReadLock();
+                nLock.EnterReadLock();
                 List<TrieNode> children;
                 try
                 {
@@ -379,8 +385,7 @@ namespace Nop.Core.Infrastructure
                 }
                 finally
                 {
-                    if (!lockAlreadyHeld)
-                        nLock.ExitReadLock();
+                    nLock.ExitReadLock();
                 }
                 foreach (var child in children)
                 {
