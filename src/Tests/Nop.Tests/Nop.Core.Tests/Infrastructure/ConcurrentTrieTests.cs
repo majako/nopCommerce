@@ -43,7 +43,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        // [Ignore("Not a test, used for profiling")]
+        [Ignore("Not a test, used for profiling")]
         public void Profile()
         {
             var sut = new ConcurrentTrie<int>();
@@ -69,32 +69,28 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        // [Ignore("Not a test, used for profiling")]
+        [Ignore("Not a test, used for profiling")]
         public void ProfileParallel()
         {
             var sut = new ConcurrentTrie<byte>();
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
-            Parallel.For(0, 1000, new ParallelOptions {MaxDegreeOfParallelism = 8}, _ =>
+            Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, _ =>
             {
                 for (var i = 0; i < 1000; i++)
                 {
                     var s = Guid.NewGuid().ToString();
-                    // var t = s[..(8 + Random.Shared.Next(24))];
                     sut.Add(s, default);
-                    // sut.Remove(s);
-                    // sut.Keys.ToArray();
+                    sut.Remove(s);
+                    // sut.Keys.ToList();
                 }
             });
             sw.Stop();
             var delta = GC.GetTotalMemory(true) - memory;
             Console.WriteLine(sw.ElapsedMilliseconds);
             Console.WriteLine(delta);
-            sw.Restart();
             Console.WriteLine(sut.Keys.Count());
-            sw.Stop();
-            Console.WriteLine(sw.ElapsedMilliseconds);
         }
 
         [Test]
@@ -159,6 +155,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             sut.Prune("b", out subtree).Should().BeTrue();
             subtree.Keys.Should().BeEquivalentTo(new[] { "b", "bba", "bbb" });
             sut.Keys.Should().BeEquivalentTo(new[] { "a" });
+
             sut = subtree;
             sut.Prune("bb", out subtree).Should().BeTrue();
             subtree.Keys.Should().BeEquivalentTo(new[] { "bba", "bbb" });
@@ -167,6 +164,16 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             sut.Prune("bba", out subtree);
             subtree.Keys.Should().BeEquivalentTo(new[] { "bba" });
             sut.Keys.Should().BeEquivalentTo(new[] { "bbb" });
+
+            sut = new ConcurrentTrie<int>();
+            sut.Add("aaa", 1);
+            sut.Prune("a", out subtree).Should().BeTrue();
+            subtree.Keys.Should().BeEquivalentTo(new[] { "aaa" });
+            sut.Keys.Should().BeEmpty();
+            sut = subtree;
+            sut.Prune("aa", out subtree).Should().BeTrue();
+            sut.Keys.Should().BeEmpty();
+            subtree.Keys.Should().BeEquivalentTo(new[] { "aaa" });
         }
 
         [Test]

@@ -25,9 +25,7 @@ namespace Nop.Core.Infrastructure
         }
 
         private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
-        private readonly TrieNode _root;
-        private readonly string _prefix;
-
+        private readonly TrieNode _root = new(string.Empty);
 
         /// <summary>
         /// Gets a collection that contains the keys in the <see cref="ConcurrentTrie{TValue}" />
@@ -39,15 +37,13 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         public IEnumerable<TValue> Values => Search(string.Empty).Select(kv => kv.Value);
 
-
-        public ConcurrentTrie() : this(new(string.Empty), string.Empty)
+        public ConcurrentTrie()
         {
         }
 
-        private ConcurrentTrie(TrieNode root, string prefix)
+        private ConcurrentTrie(TrieNode subtreeRoot)
         {
-            _root = root;
-            _prefix = prefix;
+            _root.Children[subtreeRoot.Label[0]] = subtreeRoot;
         }
 
         /// <summary>
@@ -77,8 +73,7 @@ namespace Nop.Core.Infrastructure
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
 
-            var node = GetOrAddNode(key);
-            _values[node] = value;
+            _values[GetOrAddNode(key)] = value;
         }
 
         /// <summary>
@@ -107,10 +102,10 @@ namespace Nop.Core.Infrastructure
                 return Enumerable.Empty<KeyValuePair<string, TValue>>();
 
             // depth-first traversal
-            IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
+            static IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
                 if (_values.TryGetValue(n, out var value))
-                    yield return new KeyValuePair<string, TValue>(_prefix + s, value);
+                    yield return new KeyValuePair<string, TValue>(s, value);
                 var nLock = n.Lock;
                 var lockAlreadyHeld = nLock.IsReadLockHeld;
                 if (!lockAlreadyHeld)
@@ -147,53 +142,33 @@ namespace Nop.Core.Infrastructure
         /// <summary>
         /// Gets the value with the specified key, adding a new item if one does not exist
         /// </summary>
-        /// <param name="key">The key of the item to be deleted (case-insensitive)</param>
+        /// <param name="key">The key (case-sensitive) of the item to be deleted</param>
         /// <param name="valueFactory">A function for producing a new value if one was not found</param>
         /// <returns>
         /// The existing value for the given key, if found, otherwise the newly inserted value
         /// </returns>
         public TValue GetOrAdd(string key, Func<TValue> valueFactory)
         {
-            var node = GetOrAddNode(key);
-            return _values.GetOrAdd(node, _ => valueFactory());
+            return _values.GetOrAdd(GetOrAddNode(key), _ => valueFactory());
         }
 
         /// <summary>
         /// Attempts to remove all items with keys starting with the specified prefix
         /// </summary>
-        /// <param name="prefix">The prefix of the items to be deleted (case-insensitive)</param>
+        /// <param name="prefix">The prefix (case-sensitive) of the items to be deleted</param>
         /// <param name="subtree">The subtree containing all deleted items, if found</param>
         /// <returns>
         /// True if the prefix was successfully removed from the trie, otherwise false
         /// </returns>
         public bool Prune(string prefix, out ConcurrentTrie<TValue> subtree)
         {
-            if (string.IsNullOrEmpty(prefix))
-                throw new ArgumentException($"'{nameof(prefix)}' cannot be null or empty.", nameof(prefix));
+            if (prefix is null)
+                throw new ArgumentNullException(nameof(prefix));
 
             subtree = default;
-            if (!prefix.StartsWith(_prefix))
-                return false;
-            if (prefix == _prefix)
-            {
-                var rootCopy = new TrieNode(string.Empty);
-                _root.Lock.EnterReadLock();
-                try
-                {
-                    foreach (var (key, child) in _root.Children)
-                        rootCopy.Children[key] = child;
-                }
-                finally
-                {
-                    _root.Lock.ExitReadLock();
-                }
-                subtree = new(rootCopy, prefix);
-                Clear();
-                return true;
-            }
             var node = _root;
             var parent = node;
-            var span = prefix.AsSpan()[_prefix.Length..];
+            var span = prefix.AsSpan();
             var i = 0;
             char c;
             while (i < span.Length)
@@ -210,7 +185,8 @@ namespace Nop.Core.Infrastructure
                     {
                         if (parent.Children.Remove(c, out node))
                         {
-                            subtree = new(node, prefix);
+                            node.Label = prefix[..i] + node.Label;
+                            subtree = new(node);
                             return true;
                         }
                     }
@@ -323,21 +299,13 @@ namespace Nop.Core.Infrastructure
             return i;
         }
 
-        private void Remove(TrieNode node, ReadOnlySpan<char> key)
+        private static void Remove(TrieNode node, ReadOnlySpan<char> key)
         {
-            if (!key.StartsWith(_prefix))
-                return;
-            if (key == _prefix)
-            {
-                _values.TryRemove(_root, out _);
-                return;
-            }
             var parent = node;
-            var span = key[_prefix.Length..];
             var i = 0;
-            while (i < span.Length)
+            while (i < key.Length)
             {
-                var c = span[i];
+                var c = key[i];
                 var parentLock = parent.Lock;
                 parentLock.EnterUpgradeableReadLock();
                 try
@@ -345,8 +313,8 @@ namespace Nop.Core.Infrastructure
                     if (!parent.Children.TryGetValue(c, out node))
                         return;
                     var label = node.Label.AsSpan();
-                    var k = GetCommonPrefixLength(span[i..], label);
-                    if (k == label.Length && k == span.Length - i)
+                    var k = GetCommonPrefixLength(key[i..], label);
+                    if (k == label.Length && k == key.Length - i)
                     {
                         _values.TryRemove(node, out _);
                         var nodeLock = node.Lock;
