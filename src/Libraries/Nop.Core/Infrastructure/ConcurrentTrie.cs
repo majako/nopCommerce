@@ -13,10 +13,8 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
-            private static readonly StripedReaderWriterLock _locks = new();
             public volatile string Label;
             public readonly Dictionary<char, TrieNode> Children = new();
-            public ReaderWriterLockSlim Lock => _locks.GetLock(this);
 
             public TrieNode(string label)
             {
@@ -26,6 +24,7 @@ namespace Nop.Core.Infrastructure
 
         private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
         private readonly TrieNode _root = new(string.Empty);
+        private readonly StripedReaderWriterLock _locks = new();
 
         /// <summary>
         /// Gets a collection that contains the keys in the <see cref="ConcurrentTrie{TValue}" />
@@ -81,9 +80,16 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         public void Clear()
         {
-            _root.Lock.EnterWriteLock();
-            _root.Children.Clear();
-            _root.Lock.ExitWriteLock();
+            var rootLock = _locks.GetLock(_root);
+            rootLock.EnterWriteLock();
+            try
+            {
+                _root.Children.Clear();
+            }
+            finally
+            {
+                rootLock.ExitWriteLock();
+            }
         }
 
         /// <summary>
@@ -102,11 +108,11 @@ namespace Nop.Core.Infrastructure
                 return Enumerable.Empty<KeyValuePair<string, TValue>>();
 
             // depth-first traversal
-            static IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
+            IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
             {
                 if (_values.TryGetValue(n, out var value))
                     yield return new KeyValuePair<string, TValue>(s, value);
-                var nLock = n.Lock;
+                var nLock = _locks.GetLock(n);
                 var lockAlreadyHeld = nLock.IsReadLockHeld;
                 if (!lockAlreadyHeld)
                     nLock.EnterReadLock();
@@ -180,7 +186,8 @@ namespace Nop.Core.Infrastructure
                 var k = GetCommonPrefixLength(span[i..], label);
                 if (k == span.Length - i)
                 {
-                    parent.Lock.EnterWriteLock();
+                    var parentLock = _locks.GetLock(parent);
+                    parentLock.EnterWriteLock();
                     try
                     {
                         if (parent.Children.Remove(c, out node))
@@ -192,7 +199,7 @@ namespace Nop.Core.Infrastructure
                     }
                     finally
                     {
-                        parent.Lock.ExitWriteLock();
+                        parentLock.ExitWriteLock();
                     }
                     return false;   // was removed by another thread
                 }
@@ -204,6 +211,15 @@ namespace Nop.Core.Infrastructure
             return false;
         }
 
+        private static int GetCommonPrefixLength(ReadOnlySpan<char> s1, ReadOnlySpan<char> s2)
+        {
+            var i = 0;
+            var minLength = Math.Min(s1.Length, s2.Length);
+            for (; i < minLength && s2[i] == s1[i]; i++)
+                ;
+            return i;
+        }
+
         private TrieNode GetOrAddNode(string key)
         {
             var node = _root;
@@ -213,7 +229,7 @@ namespace Nop.Core.Infrastructure
             while (true)
             {
                 c = suffix[0];
-                nodeLock = node.Lock;
+                nodeLock = _locks.GetLock(node);
                 nodeLock.EnterUpgradeableReadLock();
                 try
                 {
@@ -290,23 +306,14 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private static int GetCommonPrefixLength(ReadOnlySpan<char> s1, ReadOnlySpan<char> s2)
-        {
-            var i = 0;
-            var minLength = Math.Min(s1.Length, s2.Length);
-            for (; i < minLength && s2[i] == s1[i]; i++)
-                ;
-            return i;
-        }
-
-        private static void Remove(TrieNode node, ReadOnlySpan<char> key)
+        private void Remove(TrieNode node, ReadOnlySpan<char> key)
         {
             var parent = node;
             var i = 0;
             while (i < key.Length)
             {
                 var c = key[i];
-                var parentLock = parent.Lock;
+                var parentLock = _locks.GetLock(parent);
                 parentLock.EnterUpgradeableReadLock();
                 try
                 {
@@ -317,7 +324,7 @@ namespace Nop.Core.Infrastructure
                     if (k == label.Length && k == key.Length - i)
                     {
                         _values.TryRemove(node, out _);
-                        var nodeLock = node.Lock;
+                        var nodeLock = _locks.GetLock(node);
                         var lockAlreadyHeld = nodeLock == parentLock;
                         if (!lockAlreadyHeld)
                             nodeLock.EnterReadLock();
