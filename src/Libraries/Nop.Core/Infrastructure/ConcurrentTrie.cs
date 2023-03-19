@@ -84,6 +84,8 @@ namespace Nop.Core.Infrastructure
             rootLock.EnterWriteLock();
             try
             {
+                foreach (var child in _root.Children.Values)
+                    _values.TryRemove(child, out _);
                 _root.Children.Clear();
             }
             finally
