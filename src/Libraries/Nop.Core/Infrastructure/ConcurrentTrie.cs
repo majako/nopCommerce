@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nop.Core.Infrastructure
 {
@@ -23,7 +24,7 @@ namespace Nop.Core.Infrastructure
         }
 
         private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
-        private readonly TrieNode _root = new(string.Empty);
+        private volatile TrieNode _root = new(string.Empty);
         private readonly StripedReaderWriterLock _locks = new();
 
         /// <summary>
@@ -59,7 +60,7 @@ namespace Nop.Core.Infrastructure
                 throw new ArgumentNullException(nameof(key));
 
             value = default;
-            return Find(key, out var node) && _values.TryGetValue(node, out value);
+            return Find(key, _root, out var node) && _values.TryGetValue(node, out value);
         }
 
         /// <summary>
@@ -80,18 +81,14 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         public void Clear()
         {
-            var rootLock = _locks.GetLock(_root);
-            rootLock.EnterWriteLock();
-            try
+            var oldRoot = _root;
+            // clean up unused values in the background without blocking the thread
+            Task.Run(() =>
             {
-                foreach (var child in _root.Children.Values)
-                    _values.TryRemove(child, out _);
-                _root.Children.Clear();
-            }
-            finally
-            {
-                rootLock.ExitWriteLock();
-            }
+                foreach (var (_, node, _) in SearchInternal(oldRoot, string.Empty))
+                    _values.TryRemove(node, out _);
+            });
+            _root = new(string.Empty);
         }
 
         /// <summary>
@@ -103,39 +100,8 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public IEnumerable<KeyValuePair<string, TValue>> Search(string prefix)
         {
-            if (prefix is null)
-                throw new ArgumentNullException(nameof(prefix));
-
-            if (!Find(prefix, out var node))
-                return Enumerable.Empty<KeyValuePair<string, TValue>>();
-
-            // depth-first traversal
-            IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
-            {
-                if (_values.TryGetValue(n, out var value))
-                    yield return new KeyValuePair<string, TValue>(s, value);
-                var nLock = _locks.GetLock(n);
-                var lockAlreadyHeld = nLock.IsReadLockHeld;
-                if (!lockAlreadyHeld)
-                    nLock.EnterReadLock();
-                List<TrieNode> children;
-                try
-                {
-                    // we can't know what is done during enumeration, so we need to make a copy of the children
-                    children = n.Children.Values.ToList();
-                }
-                finally
-                {
-                    if (!lockAlreadyHeld)
-                        nLock.ExitReadLock();
-                }
-                foreach (var child in children)
-                {
-                    foreach (var kv in traverse(child, s + child.Label))
-                        yield return kv;
-                }
-            }
-            return traverse(node, prefix);
+            return SearchInternal(_root, prefix)
+                .Select(t => new KeyValuePair<string, TValue>(t.key, t.value));
         }
 
         /// <summary>
@@ -285,9 +251,9 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private bool Find(string key, out TrieNode node)
+        private static bool Find(string key, TrieNode subtreeRoot, out TrieNode node)
         {
-            node = _root;
+            node = subtreeRoot;
             if (key.Length == 0)
                 return true;
             var suffix = key.AsSpan();
@@ -381,11 +347,49 @@ namespace Nop.Core.Infrastructure
                 parent = node;
             }
         }
+
+
+        private IEnumerable<(string key, TrieNode node, TValue value)> SearchInternal(TrieNode subtreeRoot, string prefix)
+        {
+            if (prefix is null)
+                throw new ArgumentNullException(nameof(prefix));
+
+            if (!Find(prefix, subtreeRoot, out var node))
+                return Enumerable.Empty<(string key, TrieNode node, TValue value)>();
+
+            // depth-first traversal
+            IEnumerable<(string key, TrieNode node, TValue value)> traverse(TrieNode n, string s)
+            {
+                if (_values.TryGetValue(n, out var value))
+                    yield return (s, n, value);
+                var nLock = _locks.GetLock(n);
+                var lockAlreadyHeld = nLock.IsReadLockHeld;
+                if (!lockAlreadyHeld)
+                    nLock.EnterReadLock();
+                List<TrieNode> children;
+                try
+                {
+                    // we can't know what is done during enumeration, so we need to make a copy of the children
+                    children = n.Children.Values.ToList();
+                }
+                finally
+                {
+                    if (!lockAlreadyHeld)
+                        nLock.ExitReadLock();
+                }
+                foreach (var child in children)
+                {
+                    foreach (var kv in traverse(child, s + child.Label))
+                        yield return kv;
+                }
+            }
+            return traverse(node, prefix);
+        }
     }
 }
 
 // Footnotes:
 // 
-// 1.   Since we optimistically get a value from a non-threadsafe dictionary,
+// 1.   Since we optimistically get a value from a non-threadsafe dictionary without locking,
 //      it could end up being null despite TryGetValue returning true, so we need to double-check it
 //
