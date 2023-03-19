@@ -157,31 +157,39 @@ namespace Nop.Core.Infrastructure
             while (i < span.Length)
             {
                 var c = span[i];
-                if (!node.Children.TryGetValue(c, out node) || node == default) // see footnote 1
-                    return false;
-                var label = node.Label.AsSpan();
-                var k = GetCommonPrefixLength(span[i..], label);
-                if (k == span.Length - i)
+                var parentLock = _locks.GetLock(parent);
+                parentLock.EnterUpgradeableReadLock();
+                try
                 {
-                    var parentLock = _locks.GetLock(parent);
-                    parentLock.EnterWriteLock();
-                    try
+                    if (!parent.Children.TryGetValue(c, out node))
+                        return false;
+                    var label = node.Label.AsSpan();
+                    var k = GetCommonPrefixLength(span[i..], label);
+                    if (k == span.Length - i)
                     {
-                        if (parent.Children.Remove(c, out node))
+                        parentLock.EnterWriteLock();
+                        try
                         {
-                            subtree = new(CopyNode(prefix[..i] + node.Label, node));
-                            return true;
+                            if (parent.Children.Remove(c, out node))
+                            {
+                                subtree = new(CopyNode(prefix[..i] + node.Label, node));
+                                return true;
+                            }
                         }
+                        finally
+                        {
+                            parentLock.ExitWriteLock();
+                        }
+                        return false;   // was removed by another thread
                     }
-                    finally
-                    {
-                        parentLock.ExitWriteLock();
-                    }
-                    return false;   // was removed by another thread
+                    if (k < label.Length)
+                        return false;
+                    i += label.Length;
                 }
-                if (k < label.Length)
-                    return false;
-                i += label.Length;
+                finally
+                {
+                    parentLock.ExitUpgradeableReadLock();
+                }
                 parent = node;
             }
             return false;
@@ -261,17 +269,15 @@ namespace Nop.Core.Infrastructure
                         }
                         return outNode;
                     }
-                    var suffixNode = new TrieNode(suffix.ToString());
                     nodeLock.EnterWriteLock();
                     try
                     {
-                        node.Children[c] = suffixNode;
+                        return node.Children[c] = new TrieNode(suffix.ToString());
                     }
                     finally
                     {
                         nodeLock.ExitWriteLock();
                     }
-                    return suffixNode;
                 }
                 finally
                 {
