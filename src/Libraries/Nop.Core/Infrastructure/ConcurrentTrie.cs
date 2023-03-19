@@ -32,12 +32,12 @@ namespace Nop.Core.Infrastructure
         /// <summary>
         /// Gets a collection that contains the keys in the <see cref="ConcurrentTrie{TValue}" />
         /// </summary>
-        public IEnumerable<string> Keys => Search(string.Empty).Select(kv => kv.Key);
+        public IEnumerable<string> Keys => SearchInternal(_root, string.Empty).Select(t => t.Key);
 
         /// <summary>
         /// Gets a collection that contains the values in the <see cref="ConcurrentTrie{TValue}" />
         /// </summary>
-        public IEnumerable<TValue> Values => Search(string.Empty).Select(kv => kv.Value);
+        public IEnumerable<TValue> Values => SearchInternal(_root, string.Empty).Select(t => t.Value);
 
         /// <summary>
         /// Initializes a new empty instance of <see cref="ConcurrentTrie{TValue}" />
