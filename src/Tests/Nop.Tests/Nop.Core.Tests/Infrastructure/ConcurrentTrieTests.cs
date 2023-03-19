@@ -43,7 +43,17 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        [Ignore("Not a test, used for profiling")]
+        public void DoesNotBlockWhileEnumerating()
+        {
+            var sut = new ConcurrentTrie<int>();
+            sut.Add("a", 0);
+            sut.Add("ab", 0);
+            foreach (var item in sut.Keys)
+                sut.Remove(item);
+        }
+
+        [Test]
+        [Ignore("Not a test, used for profiling.")]
         public void Profile()
         {
             var sut = new ConcurrentTrie<int>();
@@ -59,18 +69,8 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        public void Test()
-        {
-            var sut = new ConcurrentTrie<int>();
-            sut.Add("a", 0);
-            sut.Add("ab", 0);
-            foreach (var item in sut.Keys)
-                sut.Remove(item);
-        }
-
-        [Test]
-        [Ignore("Not a test, used for profiling")]
-        public void ProfileParallel()
+        [Ignore("Concurrency tests are inherently flaky, and may give false positives. Run manually when needed.")]
+        public void DoesNotBreakDuringParallelExecution()
         {
             var sut = new ConcurrentTrie<byte>();
             var sw = new Stopwatch();

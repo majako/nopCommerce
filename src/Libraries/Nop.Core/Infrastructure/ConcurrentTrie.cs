@@ -23,6 +23,8 @@ namespace Nop.Core.Infrastructure
             }
         }
 
+        private record struct InternalSearchResult(string Key, TrieNode Node, TValue Value);
+
         private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
         private volatile TrieNode _root = new(string.Empty);
         private readonly StripedReaderWriterLock _locks = new();
@@ -37,6 +39,9 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         public IEnumerable<TValue> Values => Search(string.Empty).Select(kv => kv.Value);
 
+        /// <summary>
+        /// Initializes a new empty instance of <see cref="ConcurrentTrie{TValue}" />
+        /// </summary>
         public ConcurrentTrie()
         {
         }
@@ -82,32 +87,32 @@ namespace Nop.Core.Infrastructure
         public void Clear()
         {
             var oldRoot = _root;
+            _root = new(string.Empty);
             // clean up unused values in the background without blocking the thread
             Task.Run(() =>
             {
                 foreach (var (_, node, _) in SearchInternal(oldRoot, string.Empty))
                     _values.TryRemove(node, out _);
             });
-            _root = new(string.Empty);
         }
 
         /// <summary>
         /// Gets all key-value pairs for keys starting with the given prefix
         /// </summary>
-        /// <param name="prefix">The prefix to search for (case-insensitive)</param>
+        /// <param name="prefix">The prefix (case-sensitive) to search for</param>
         /// <returns>
         /// All key-value pairs for keys starting with <paramref name="prefix"/>
         /// </returns>
         public IEnumerable<KeyValuePair<string, TValue>> Search(string prefix)
         {
             return SearchInternal(_root, prefix)
-                .Select(t => new KeyValuePair<string, TValue>(t.key, t.value));
+                .Select(t => new KeyValuePair<string, TValue>(t.Key, t.Value));
         }
 
         /// <summary>
         /// Removes the item with the given key, if present
         /// </summary>
-        /// <param name="key">The key of the item to be removed (case-insensitive)</param>
+        /// <param name="key">The key (case-sensitive) of the item to be removed</param>
         public void Remove(string key)
         {
             Remove(_root, key);
@@ -144,10 +149,9 @@ namespace Nop.Core.Infrastructure
             var parent = node;
             var span = prefix.AsSpan();
             var i = 0;
-            char c;
             while (i < span.Length)
             {
-                c = span[i];
+                var c = span[i];
                 if (!node.Children.TryGetValue(c, out node) || node == default) // see footnote 1
                     return false;
                 var label = node.Label.AsSpan();
@@ -188,15 +192,37 @@ namespace Nop.Core.Infrastructure
             return i;
         }
 
+        private static bool Find(string key, TrieNode subtreeRoot, out TrieNode node)
+        {
+            node = subtreeRoot;
+            if (key.Length == 0)
+                return true;
+            var suffix = key.AsSpan();
+            while (true)
+            {
+                if (!node.Children.TryGetValue(suffix[0], out node) || node == default) // see footnote 1
+                    return false;
+                var span = node.Label.AsSpan();
+                var i = GetCommonPrefixLength(suffix, span);
+                if (i == span.Length)
+                {
+                    if (i == suffix.Length)
+                        return _values.TryGetValue(node, out _);
+                    suffix = suffix[i..];
+                    continue;
+                }
+                return false;
+            }
+        }
+
         private TrieNode GetOrAddNode(string key)
         {
             var node = _root;
             var suffix = key.AsSpan();
-            char c;
             ReaderWriterLockSlim nodeLock;
             while (true)
             {
-                c = suffix[0];
+                var c = suffix[0];
                 nodeLock = _locks.GetLock(node);
                 nodeLock.EnterUpgradeableReadLock();
                 try
@@ -251,32 +277,10 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private static bool Find(string key, TrieNode subtreeRoot, out TrieNode node)
+        private void Remove(TrieNode subtreeRoot, ReadOnlySpan<char> key)
         {
-            node = subtreeRoot;
-            if (key.Length == 0)
-                return true;
-            var suffix = key.AsSpan();
-            while (true)
-            {
-                if (!node.Children.TryGetValue(suffix[0], out node) || node == default) // see footnote 1
-                    return false;
-                var span = node.Label.AsSpan();
-                var i = GetCommonPrefixLength(suffix, span);
-                if (i == span.Length)
-                {
-                    if (i == suffix.Length)
-                        return _values.TryGetValue(node, out _);
-                    suffix = suffix[i..];
-                    continue;
-                }
-                return false;
-            }
-        }
-
-        private void Remove(TrieNode node, ReadOnlySpan<char> key)
-        {
-            var parent = node;
+            var node = subtreeRoot;
+            var parent = subtreeRoot;
             var i = 0;
             while (i < key.Length)
             {
@@ -348,20 +352,19 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-
-        private IEnumerable<(string key, TrieNode node, TValue value)> SearchInternal(TrieNode subtreeRoot, string prefix)
+        private IEnumerable<InternalSearchResult> SearchInternal(TrieNode subtreeRoot, string prefix)
         {
             if (prefix is null)
                 throw new ArgumentNullException(nameof(prefix));
 
             if (!Find(prefix, subtreeRoot, out var node))
-                return Enumerable.Empty<(string key, TrieNode node, TValue value)>();
+                return Enumerable.Empty<InternalSearchResult>();
 
             // depth-first traversal
-            IEnumerable<(string key, TrieNode node, TValue value)> traverse(TrieNode n, string s)
+            IEnumerable<InternalSearchResult> traverse(TrieNode n, string s)
             {
                 if (_values.TryGetValue(n, out var value))
-                    yield return (s, n, value);
+                    yield return new InternalSearchResult(s, n, value);
                 var nLock = _locks.GetLock(n);
                 var lockAlreadyHeld = nLock.IsReadLockHeld;
                 if (!lockAlreadyHeld)
