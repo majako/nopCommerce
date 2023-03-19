@@ -78,19 +78,19 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             sw.Start();
             Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, _ =>
             {
-                for (var i = 0; i < 1000; i++)
+                for (var i = 0; i < 100; i++)
                 {
                     var s = Guid.NewGuid().ToString();
                     sut.Add(s, default);
+                    // sut.Prune(s[..16], out var st);
                     sut.Remove(s);
-                    // sut.Keys.ToList();
                 }
             });
             sw.Stop();
             var delta = GC.GetTotalMemory(true) - memory;
             Console.WriteLine(sw.ElapsedMilliseconds);
             Console.WriteLine(delta);
-            Console.WriteLine(sut.Keys.Count());
+            sut.Keys.Should().BeEmpty();
         }
 
         [Test]
@@ -111,7 +111,9 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             sut.Remove("bb");
             sut.TryGetValue("b", out _).Should().BeTrue();
             sut.TryGetValue("bbb", out _).Should().BeTrue();
+
             sut.Prune("b", out sut);
+            sut.Keys.Should().BeEquivalentTo(new[] { "b", "bbb" });
             sut.Remove("b");
             sut.Keys.Should().BeEquivalentTo(new[] { "bbb" });
         }
