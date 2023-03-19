@@ -14,12 +14,17 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
-            public volatile string Label;
+            public readonly string Label;
             public readonly Dictionary<char, TrieNode> Children = new();
 
             public TrieNode(string label)
             {
                 Label = label;
+            }
+
+            public TrieNode(string label, TrieNode node) : this(label)
+            {
+                Children = node.Children;
             }
         }
 
@@ -164,8 +169,7 @@ namespace Nop.Core.Infrastructure
                     {
                         if (parent.Children.Remove(c, out node))
                         {
-                            node.Label = prefix[..i] + node.Label;
-                            subtree = new(node);
+                            subtree = new(new TrieNode(prefix[..i] + node.Label, node));
                             return true;
                         }
                     }
@@ -239,9 +243,8 @@ namespace Nop.Core.Infrastructure
                             node = nextNode;
                             continue;
                         }
-                        nextNode.Label = nextKey[i..].ToString();
                         var splitNode = new TrieNode(suffix[..i].ToString());
-                        splitNode.Children[nextKey[i]] = nextNode;
+                        splitNode.Children[nextKey[i]] = new TrieNode(nextKey[i..].ToString(), nextNode);
                         TrieNode outNode;
                         if (i == suffix.Length) // nextKey starts with suffix
                             outNode = splitNode;
@@ -320,11 +323,10 @@ namespace Nop.Core.Infrastructure
                                 var child = node.Children.FirstOrDefault().Value;
                                 if (child != default)
                                 {
-                                    child.Label = node.Label + child.Label;
                                     parentLock.EnterWriteLock();
                                     try
                                     {
-                                        parent.Children[c] = child;
+                                        parent.Children[c] = new TrieNode(node.Label + child.Label, child);
                                     }
                                     finally
                                     {
