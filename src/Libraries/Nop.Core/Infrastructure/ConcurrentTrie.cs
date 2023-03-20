@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nop.Core.Infrastructure
 {
@@ -16,6 +15,7 @@ namespace Nop.Core.Infrastructure
         {
             public readonly string Label;
             public readonly Dictionary<char, TrieNode> Children = new();
+            private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
 
             public TrieNode(string label)
             {
@@ -25,12 +25,38 @@ namespace Nop.Core.Infrastructure
             public TrieNode(string label, TrieNode node) : this(label)
             {
                 Children = node.Children;
+                if (node.TryRemoveValue(out var value))
+                    _values[this] = value;
+            }
+
+            public bool TryGetValue(out TValue value)
+            {
+                return _values.TryGetValue(this, out value);
+            }
+
+            public bool TryRemoveValue(out TValue value)
+            {
+                return _values.TryRemove(this, out value);
+            }
+
+            public void SetValue(TValue value)
+            {
+                _values[this] = value;
+            }
+
+            public TValue GetOrAddValue(Func<TValue> valueFactory)
+            {
+                return _values.GetOrAdd(this, _ => valueFactory());
+            }
+
+            ~TrieNode()
+            {
+                TryRemoveValue(out _);
             }
         }
 
         private record struct InternalSearchResult(string Key, TrieNode Node, TValue Value);
 
-        private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
         private volatile TrieNode _root = new(string.Empty);
         private readonly StripedReaderWriterLock _locks = new();
 
@@ -70,7 +96,7 @@ namespace Nop.Core.Infrastructure
                 throw new ArgumentNullException(nameof(key));
 
             value = default;
-            return Find(key, _root, out var node) && _values.TryGetValue(node, out value);
+            return Find(key, _root, out var node) && node.TryGetValue(out value);
         }
 
         /// <summary>
@@ -83,7 +109,7 @@ namespace Nop.Core.Infrastructure
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
 
-            _values[GetOrAddNode(key)] = value;
+            GetOrAddNode(key).SetValue(value);
         }
 
         /// <summary>
@@ -91,14 +117,7 @@ namespace Nop.Core.Infrastructure
         /// </summary>
         public void Clear()
         {
-            var oldRoot = _root;
             _root = new(string.Empty);
-            // clean up unused values in the background without blocking the thread
-            Task.Run(() =>
-            {
-                foreach (var (_, node, _) in SearchInternal(oldRoot, string.Empty))
-                    _values.TryRemove(node, out _);
-            });
         }
 
         /// <summary>
@@ -133,7 +152,7 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public TValue GetOrAdd(string key, Func<TValue> valueFactory)
         {
-            return _values.GetOrAdd(GetOrAddNode(key), _ => valueFactory());
+            return GetOrAddNode(key).GetOrAddValue(valueFactory);
         }
 
         /// <summary>
@@ -172,7 +191,7 @@ namespace Nop.Core.Infrastructure
                         {
                             if (parent.Children.Remove(c, out node))
                             {
-                                subtree = new(CopyNode(prefix[..i] + node.Label, node));
+                                subtree = new(new TrieNode(prefix[..i] + node.Label, node));
                                 return true;
                             }
                         }
@@ -219,7 +238,7 @@ namespace Nop.Core.Infrastructure
                 if (i == span.Length)
                 {
                     if (i == suffix.Length)
-                        return _values.TryGetValue(node, out _);
+                        return node.TryGetValue(out _);
                     suffix = suffix[i..];
                     continue;
                 }
@@ -252,7 +271,7 @@ namespace Nop.Core.Infrastructure
                             continue;
                         }
                         var splitNode = new TrieNode(suffix[..i].ToString());
-                        splitNode.Children[nextKey[i]] = CopyNode(nextKey[i..].ToString(), nextNode);
+                        splitNode.Children[nextKey[i]] = new TrieNode(nextKey[i..].ToString(), nextNode);
                         TrieNode outNode;
                         if (i == suffix.Length) // nextKey starts with suffix
                             outNode = splitNode;
@@ -304,7 +323,7 @@ namespace Nop.Core.Infrastructure
                     var k = GetCommonPrefixLength(key[i..], label);
                     if (k == label.Length && k == key.Length - i)
                     {
-                        _values.TryRemove(node, out _);
+                        node.TryRemoveValue(out _);
                         var nodeLock = _locks.GetLock(node);
                         var lockAlreadyHeld = nodeLock == parentLock;
                         if (!lockAlreadyHeld)
@@ -332,7 +351,7 @@ namespace Nop.Core.Infrastructure
                                     parentLock.EnterWriteLock();
                                     try
                                     {
-                                        parent.Children[c] = CopyNode(node.Label + child.Label, child);
+                                        parent.Children[c] = new TrieNode(node.Label + child.Label, child);
                                     }
                                     finally
                                     {
@@ -360,14 +379,6 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private static TrieNode CopyNode(string label, TrieNode node)
-        {
-            var copy = new TrieNode(label, node);
-            if (_values.TryRemove(node, out var value))
-                _values[copy] = value;
-            return copy;
-        }
-
         private IEnumerable<InternalSearchResult> SearchInternal(TrieNode subtreeRoot, string prefix)
         {
             if (prefix is null)
@@ -379,7 +390,7 @@ namespace Nop.Core.Infrastructure
             // depth-first traversal
             IEnumerable<InternalSearchResult> traverse(TrieNode n, string s)
             {
-                if (_values.TryGetValue(n, out var value))
+                if (n.TryGetValue(out var value))
                     yield return new InternalSearchResult(s, n, value);
                 var nLock = _locks.GetLock(n);
                 nLock.EnterReadLock();
