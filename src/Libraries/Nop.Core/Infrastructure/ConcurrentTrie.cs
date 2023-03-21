@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -13,9 +12,11 @@ namespace Nop.Core.Infrastructure
     {
         private class TrieNode
         {
+            private record ValueWrapper(TValue Value);
+
             public readonly string Label;
             public readonly Dictionary<char, TrieNode> Children = new();
-            private static readonly ConcurrentDictionary<TrieNode, TValue> _values = new();
+            private volatile ValueWrapper _value;
 
             public TrieNode(string label)
             {
@@ -26,32 +27,40 @@ namespace Nop.Core.Infrastructure
             {
                 Children = node.Children;
                 if (node.TryRemoveValue(out var value))
-                    _values[this] = value;
+                    _value = new(value);
             }
 
             public bool TryGetValue(out TValue value)
             {
-                return _values.TryGetValue(this, out value);
+                var wrapper = _value;
+                value = default;
+                if (wrapper == null)
+                    return false;
+                value = wrapper.Value;
+                return true;
             }
 
             public bool TryRemoveValue(out TValue value)
             {
-                return _values.TryRemove(this, out value);
+                var wrapper = Interlocked.Exchange(ref _value, null);
+                if (wrapper == null)
+                {
+                    value = default;
+                    return false;
+                }
+                value = wrapper.Value;
+                return true;
             }
 
             public void SetValue(TValue value)
             {
-                _values[this] = value;
+                _value = new(value);
             }
 
-            public TValue GetOrAddValue(Func<TValue> valueFactory)
+            public TValue GetOrAddValue(TValue value)
             {
-                return _values.GetOrAdd(this, _ => valueFactory());
-            }
-
-            ~TrieNode()
-            {
-                TryRemoveValue(out _);
+                var wrapper = Interlocked.CompareExchange(ref _value, new(value), null);
+                return wrapper != null ? wrapper.Value : value;
             }
         }
 
@@ -150,9 +159,9 @@ namespace Nop.Core.Infrastructure
         /// <returns>
         /// The existing value for the given key, if found, otherwise the newly inserted value
         /// </returns>
-        public TValue GetOrAdd(string key, Func<TValue> valueFactory)
+        public TValue GetOrAdd(string key, TValue value)
         {
-            return GetOrAddNode(key).GetOrAddValue(valueFactory);
+            return GetOrAddNode(key).GetOrAddValue(value);
         }
 
         /// <summary>
