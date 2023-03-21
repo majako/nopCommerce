@@ -26,7 +26,7 @@ namespace Nop.Core.Infrastructure
             public TrieNode(string label, TrieNode node) : this(label)
             {
                 Children = node.Children;
-                if (node.TryRemoveValue(out var value))
+                if (node.TryGetValue(out var value))
                     _value = new(value);
             }
 
