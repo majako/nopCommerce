@@ -12,7 +12,7 @@ namespace Nop.Core.Infrastructure
         private readonly int _mask;
 
         // defaults to 8 times the number of processor cores
-        public StripedReaderWriterLock() : this((int)Math.Log2(Environment.ProcessorCount) + 8)
+        public StripedReaderWriterLock() : this((int)Math.Log2(Environment.ProcessorCount) + 3)
         {
         }
 
