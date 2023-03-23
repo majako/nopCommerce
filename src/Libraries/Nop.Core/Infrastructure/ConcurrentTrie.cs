@@ -272,9 +272,9 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private TrieNode GetOrAddNode(string key, TValue value, bool overwrite = false, TrieNode subtreeRoot = null)
+        private TrieNode GetOrAddNode(string key, TValue value, bool overwrite = false)
         {
-            var node = subtreeRoot ?? _root;
+            var node = _root;
             var suffix = key.AsSpan();
             ReaderWriterLockSlim nodeLock;
             char c;
@@ -376,7 +376,7 @@ namespace Nop.Core.Infrastructure
                 nodeLock.ExitUpgradeableReadLock();
             }
             // we failed to add a node, so we have to retry
-            return GetOrAddNode(key, value, overwrite, node);
+            return GetOrAddNode(key, value, overwrite);
         }
 
         private void Remove(TrieNode subtreeRoot, ReadOnlySpan<char> key)
