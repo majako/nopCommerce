@@ -331,6 +331,7 @@ namespace Nop.Core.Infrastructure
             {
                 _structureLock.ExitReadLock();
             }
+
             _structureLock.EnterWriteLock();
             nodeLock.EnterUpgradeableReadLock();
             try

@@ -53,7 +53,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        [Ignore("Not a test, used for profiling.")]
+        // [Ignore("Not a test, used for profiling.")]
         public void Profile()
         {
             var sut = new ConcurrentTrie<byte>();
@@ -72,7 +72,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         // [Ignore("Concurrency tests are inherently flaky, and may give false positives. Run manually when needed.")]
         public void DoesNotBreakDuringParallelExecution()
         {
-            for (var k = 0; k < 5; k++)
+            for (var k = 0; k < 1; k++)
             {
                 var sut = new ConcurrentTrie<int>();
                 var sw = new Stopwatch();
@@ -89,14 +89,14 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
                         value.Should().Be(i);
                         sut.Remove(s);
                         sut.TryGetValue(s, out _).Should().BeFalse();
-                        // sut.Prune($"{j}-", out var st);
+                        // sut.Prune($"{i}-", out var st);
                     }
                 });
                 sw.Stop();
-                // var delta = GC.GetTotalMemory(true) - memory;
-                // Console.WriteLine(sw.ElapsedMilliseconds);
-                // Console.WriteLine(delta);
-                // Console.WriteLine(sut.Keys.Count());
+                var delta = GC.GetTotalMemory(true) - memory;
+                Console.WriteLine(sw.ElapsedMilliseconds);
+                Console.WriteLine(delta);
+                Console.WriteLine(sut.Keys.Count());
             }
         }
 
