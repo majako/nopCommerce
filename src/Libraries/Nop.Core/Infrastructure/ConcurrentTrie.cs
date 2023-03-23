@@ -118,7 +118,7 @@ namespace Nop.Core.Infrastructure
             if (string.IsNullOrEmpty(key))
                 throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
 
-            GetOrAddNode(key).SetValue(value);
+            GetOrAddNode(key, value, true);
         }
 
         /// <summary>
@@ -161,7 +161,7 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public TValue GetOrAdd(string key, TValue value)
         {
-            return GetOrAddNode(key).GetOrAddValue(value);
+            return GetOrAddNode(key, value).GetOrAddValue(value);
         }
 
         /// <summary>
@@ -269,7 +269,7 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private TrieNode GetOrAddNode(string key)
+        private TrieNode GetOrAddNode(string key, TValue value, bool overwrite = false)
         {
             var node = _root;
             var suffix = key.AsSpan();
@@ -281,6 +281,8 @@ namespace Nop.Core.Infrastructure
                 nodeLock.EnterUpgradeableReadLock();
                 try
                 {
+                    if (node != _root && node.Children.Count == 0 && !node.TryGetValue(out _))
+                        break;  // node was deleted, try again
                     if (node.Children.TryGetValue(c, out var nextNode))
                     {
                         var nextKey = nextNode.Label.AsSpan();
@@ -288,18 +290,26 @@ namespace Nop.Core.Infrastructure
                         if (i == nextKey.Length)   // suffix starts with nextKey
                         {
                             if (i == suffix.Length)    // keys are equal
+                            {
+                                if (overwrite)
+                                    nextNode.SetValue(value);
                                 return nextNode;
+                            }
                             suffix = suffix[nextKey.Length..];
                             node = nextNode;
                             continue;
                         }
                         var splitNode = new TrieNode(suffix[..i].ToString());
-                        splitNode.Children[nextKey[i]] = new TrieNode(nextKey[i..].ToString(), nextNode);
+                        var nnCopy = new TrieNode(nextKey[i..].ToString(), nextNode);
+                        // if (nnCopy.Children.Count == 0 && !nnCopy.TryGetValue(out _))
+                        //     break;
+                        splitNode.Children[nextKey[i]] = nnCopy;
                         TrieNode outNode;
                         if (i == suffix.Length) // nextKey starts with suffix
                             outNode = splitNode;
                         else
                             splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
+                        outNode.SetValue(value);
                         nodeLock.EnterWriteLock();
                         try
                         {
@@ -314,7 +324,9 @@ namespace Nop.Core.Infrastructure
                     nodeLock.EnterWriteLock();
                     try
                     {
-                        return node.Children[c] = new TrieNode(suffix.ToString());
+                        var suffixNode = new TrieNode(suffix.ToString());
+                        suffixNode.SetValue(value);
+                        return node.Children[c] = suffixNode;
                     }
                     finally
                     {
@@ -326,6 +338,7 @@ namespace Nop.Core.Infrastructure
                     nodeLock.ExitUpgradeableReadLock();
                 }
             }
+            return GetOrAddNode(key, value, overwrite);
         }
 
         private void Remove(TrieNode subtreeRoot, ReadOnlySpan<char> key)
@@ -370,7 +383,7 @@ namespace Nop.Core.Infrastructure
                 try
                 {
                     if (node.TryGetValue(out _))
-                        return;
+                        break;
                     var c = node.Label[0];
                     var nChildren = node.Children.Count;
                     if (nChildren == 0) // if the node has no children, we can just remove it
@@ -381,6 +394,8 @@ namespace Nop.Core.Infrastructure
                             parentLock.EnterWriteLock();
                         try
                         {
+                            if (!parent.Children.TryGetValue(c, out var n) || n != node)
+                                break;  // was removed or replaced by another thread
                             parent.Children.Remove(c, out _);
                         }
                         finally
@@ -398,6 +413,8 @@ namespace Nop.Core.Infrastructure
                             parentLock.EnterWriteLock();
                         try
                         {
+                            if (!parent.Children.TryGetValue(c, out var n) || n != node)
+                                break;  // was removed or replaced by another thread
                             parent.Children[c] = new TrieNode(node.Label + child.Label, child);
                         }
                         finally
@@ -408,7 +425,7 @@ namespace Nop.Core.Infrastructure
                     }
                     else
                     {
-                        return;
+                        break;
                     }
                 }
                 finally

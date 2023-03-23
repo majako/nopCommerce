@@ -56,7 +56,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         [Ignore("Not a test, used for profiling.")]
         public void Profile()
         {
-            var sut = new ConcurrentTrie<int>();
+            var sut = new ConcurrentTrie<byte>();
             var sw = new Stopwatch();
             var memory = GC.GetTotalMemory(true);
             sw.Start();
@@ -69,29 +69,35 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        [Ignore("Concurrency tests are inherently flaky, and may give false positives. Run manually when needed.")]
+        // [Ignore("Concurrency tests are inherently flaky, and may give false positives. Run manually when needed.")]
         public void DoesNotBreakDuringParallelExecution()
         {
-            var sut = new ConcurrentTrie<byte>();
-            var sw = new Stopwatch();
-            var memory = GC.GetTotalMemory(true);
-            sw.Start();
-            Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, _ =>
+            for (var k = 0; k < 5; k++)
             {
-                for (var i = 0; i < 100; i++)
+                var sut = new ConcurrentTrie<int>();
+                var sw = new Stopwatch();
+                var memory = GC.GetTotalMemory(true);
+                sw.Start();
+                Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, j =>
                 {
-                    var s = Guid.NewGuid().ToString();
-                    sut.Add(s, default);
-                    // test one of the below operations
-                    sut.Prune(s[..16], out var st);
-                    // sut.Remove(s);
-                }
-            });
-            sw.Stop();
-            var delta = GC.GetTotalMemory(true) - memory;
-            Console.WriteLine(sw.ElapsedMilliseconds);
-            Console.WriteLine(delta);
-            sut.Keys.Should().BeEmpty();
+                    for (var i = 0; i < 1000; i++)
+                    {
+                        var s = $"{i}-{j}";
+                        sut.Add(s, i);
+                        // test one of the below operations
+                        sut.TryGetValue(s, out var value).Should().BeTrue();
+                        value.Should().Be(i);
+                        sut.Remove(s);
+                        sut.TryGetValue(s, out _).Should().BeFalse();
+                        // sut.Prune($"{j}-", out var st);
+                    }
+                });
+                sw.Stop();
+                // var delta = GC.GetTotalMemory(true) - memory;
+                // Console.WriteLine(sw.ElapsedMilliseconds);
+                // Console.WriteLine(delta);
+                // Console.WriteLine(sut.Keys.Count());
+            }
         }
 
         [Test]
