@@ -164,6 +164,7 @@ namespace Nop.Core.Infrastructure
         /// </returns>
         public TValue GetOrAdd(string key, TValue value)
         {
+            // the value is already set when we get the node if it already exists, but we call GetOrAddValue anyway to get the value
             return GetOrAddNode(key, value).GetOrAddValue(value);
         }
 
@@ -207,20 +208,14 @@ namespace Nop.Core.Infrastructure
                                 return true;
                             }
                         }
-                        finally
-                        {
-                            parentLock.ExitWriteLock();
-                        }
+                        finally { parentLock.ExitWriteLock(); }
                         return false;   // was removed by another thread
                     }
                     if (k < label.Length)
                         return false;
                     i += label.Length;
                 }
-                finally
-                {
-                    parentLock.ExitUpgradeableReadLock();
-                }
+                finally { parentLock.ExitUpgradeableReadLock(); }
                 parent = node;
             }
             return false;
@@ -235,6 +230,12 @@ namespace Nop.Core.Infrastructure
             return i;
         }
 
+        /// <summary>
+        /// Gets a lock on the node's children
+        /// </summary>
+        /// <remarks>
+        /// May return the same lock for two different nodes, so the user needs to check to avoid lock recursion exceptions
+        /// </remarks>
         private ReaderWriterLockSlim GetLock(TrieNode node)
         {
             return _locks.GetLock(node.Children);
@@ -255,10 +256,7 @@ namespace Nop.Core.Infrastructure
                     if (!node.Children.TryGetValue(suffix[0], out node))
                         return false;
                 }
-                finally
-                {
-                    nodeLock.ExitReadLock();
-                }
+                finally { nodeLock.ExitReadLock(); }
                 var span = node.Label.AsSpan();
                 var i = GetCommonPrefixLength(suffix, span);
                 if (i == span.Length)
@@ -293,22 +291,26 @@ namespace Nop.Core.Infrastructure
                         {
                             var label = nextNode.Label.AsSpan();
                             var i = GetCommonPrefixLength(label, suffix);
-                            if (i == label.Length)   // suffix starts with nextKey
+                            if (i == label.Length)   // suffix starts with label
                             {
-                                if (i == suffix.Length)    // keys are equal
+                                if (i == suffix.Length)    // keys are equal - this is the node we're looking for
                                 {
                                     if (overwrite)
                                         nextNode.SetValue(value);
+                                    else
+                                        nextNode.GetOrAddValue(value);
                                     return nextNode;
                                 }
+                                // advance the suffix and continue the search from nextNode
                                 suffix = suffix[label.Length..];
                                 node = nextNode;
                                 continue;
                             }
-                            // we need to add a node, but don't want to hold an upgradeable read lock on _structureLock,
-                            // so we break, release the lock and reacquire a write lock
+                            // we need to add a node, but don't want to hold an upgradeable read lock on _structureLock
+                            // since only one can be held at a time, so we break, release the lock and reacquire a write lock
                             break;
                         }
+                        // if there is no child starting with c, we can just add and return one
                         nodeLock.EnterWriteLock();
                         try
                         {
@@ -316,33 +318,28 @@ namespace Nop.Core.Infrastructure
                             suffixNode.SetValue(value);
                             return node.Children[c] = suffixNode;
                         }
-                        finally
-                        {
-                            nodeLock.ExitWriteLock();
-                        }
+                        finally { nodeLock.ExitWriteLock(); }
                     }
-                    finally
-                    {
-                        nodeLock.ExitUpgradeableReadLock();
-                    }
+                    finally { nodeLock.ExitUpgradeableReadLock(); }
                 }
             }
-            finally
-            {
-                _structureLock.ExitReadLock();
-            }
+            finally { _structureLock.ExitReadLock(); }
 
+            // If we need to restructure the tree, we do it after releasing and reacquiring the lock.
+            // However, another thread may have restructured around the node we're on in the meantime,
+            // and in that case we need to retry the insertion
             _structureLock.EnterWriteLock();
             nodeLock.EnterUpgradeableReadLock();
             try
             {
+                // we use while instead of if so we can break
                 while (!node.Deleted && node.Children.TryGetValue(c, out nextNode))
                 {
                     var label = nextNode.Label.AsSpan();
                     var i = GetCommonPrefixLength(label, suffix);
-                    if (i == label.Length)   // suffix starts with nextKey
+                    if (i == label.Length)   // suffix starts with label?
                     {
-                        if (i == suffix.Length)    // keys are equal
+                        if (i == suffix.Length)    // if the keys are equal, the key has already been inserted
                         {
                             if (overwrite)
                                 nextNode.SetValue(value);
@@ -354,9 +351,9 @@ namespace Nop.Core.Infrastructure
                     var splitNode = new TrieNode(suffix[..i].ToString());
                     splitNode.Children[label[i]] = new TrieNode(label[i..].ToString(), nextNode);
                     TrieNode outNode;
-                    if (i == suffix.Length) // nextKey starts with suffix
+                    if (i == suffix.Length) // label starts with suffix, so we can return splitNode
                         outNode = splitNode;
-                    else
+                    else    // the keys diverge, so we need to branch from splitNode
                         splitNode.Children[suffix[i]] = outNode = new TrieNode(suffix[i..].ToString());
                     outNode.SetValue(value);
                     nodeLock.EnterWriteLock();
@@ -364,19 +361,17 @@ namespace Nop.Core.Infrastructure
                     {
                         node.Children[c] = splitNode;
                     }
-                    finally
-                    {
-                        nodeLock.ExitWriteLock();
-                    }
+                    finally { nodeLock.ExitWriteLock(); }
                     return outNode;
                 }
             }
             finally
             {
-                _structureLock.ExitWriteLock();
                 nodeLock.ExitUpgradeableReadLock();
+                _structureLock.ExitWriteLock();
             }
-            // we failed to add a node, so we have to retry
+            // we failed to add a node, so we have to retry;
+            // the recursive call is placed at the end to enable tail-recursion optimisation
             return GetOrAddNode(key, value, overwrite);
         }
 
@@ -399,18 +394,15 @@ namespace Nop.Core.Infrastructure
                         if (!parent.Children.TryGetValue(c, out node))
                             return;
                     }
-                    finally
-                    {
-                        parentLock.ExitReadLock();
-                    }
+                    finally { parentLock.ExitReadLock(); }
                     stack.Push((parent, node));
                     var label = node.Label.AsSpan();
                     var k = GetCommonPrefixLength(key[i..], label);
                     if (k == label.Length && k == key.Length - i)   // is this the node we're looking for?
                     {
                         if (node.TryRemoveValue(out _))
-                            break;
-                        return;
+                            break;  // this node has to be removed or merged
+                        return; // the node is either already removed, or it is a branching node
                     }
                     if (k < label.Length)
                         return;
@@ -418,14 +410,14 @@ namespace Nop.Core.Infrastructure
                     parent = node;
                 }
             }
-            finally
-            {
-                _structureLock.ExitReadLock();
-            }
+            finally { _structureLock.ExitReadLock(); }
 
+            // if we need to delete a node, the tree has to be restructured to remove empty leaves or merge
+            // single children with branching node parents, and other threads may be currently on these nodes
             _structureLock.EnterWriteLock();
             try
             {
+                // we shouldn't need to retrace more than two steps, but check break conditions inside the loop
                 while (stack.TryPop(out var t))
                 {
                     (parent, node) = t;
@@ -439,39 +431,34 @@ namespace Nop.Core.Infrastructure
                     try
                     {
                         if (node.HasValue)
-                            break;
+                            break;  // another thread has written a value to the node while we were waiting
+
                         var c = node.Label[0];
                         var nChildren = node.Children.Count;
                         if (nChildren == 0) // if the node has no children, we can just remove it
                         {
+                            if (!parent.Children.TryGetValue(c, out var n) || n != node || node.HasValue)
+                                break;  // was removed or replaced by another thread
                             parentLock.EnterWriteLock();
                             try
                             {
-                                if (!parent.Children.TryGetValue(c, out var n) || n != node || node.HasValue)
-                                    break;  // was removed or replaced by another thread
                                 parent.Children.Remove(c, out _);
                                 node.Deleted = true;
                             }
-                            finally
-                            {
-                                parentLock.ExitWriteLock();
-                            }
+                            finally { parentLock.ExitWriteLock(); }
                         }
                         else if (nChildren == 1)    // if there is a single child, we can merge it with node
                         {
-                            var child = node.Children.FirstOrDefault().Value;
+                            if (!parent.Children.TryGetValue(c, out var n) || n != node || node.HasValue)
+                                break;  // was removed or replaced by another thread
                             parentLock.EnterWriteLock();
                             try
                             {
-                                if (!parent.Children.TryGetValue(c, out var n) || n != node || node.HasValue)
-                                    break;  // was removed or replaced by another thread
+                                var child = node.Children.FirstOrDefault().Value;
                                 parent.Children[c] = new TrieNode(node.Label + child.Label, child);
                                 node.Deleted = true;
                             }
-                            finally
-                            {
-                                parentLock.ExitWriteLock();
-                            }
+                            finally { parentLock.ExitWriteLock(); }
                         }
                         else
                         {
@@ -487,11 +474,7 @@ namespace Nop.Core.Infrastructure
                     }
                 }
             }
-            finally
-            {
-                _structureLock.ExitWriteLock();
-            }
-
+            finally { _structureLock.ExitWriteLock(); }
         }
 
         private IEnumerable<InternalSearchResult> SearchInternal(TrieNode subtreeRoot, string prefix)
@@ -515,10 +498,7 @@ namespace Nop.Core.Infrastructure
                     // we can't know what is done during enumeration, so we need to make a copy of the children
                     children = n.Children.Values.ToList();
                 }
-                finally
-                {
-                    nLock.ExitReadLock();
-                }
+                finally { nLock.ExitReadLock(); }
                 foreach (var child in children)
                 {
                     foreach (var kv in traverse(child, s + child.Label))

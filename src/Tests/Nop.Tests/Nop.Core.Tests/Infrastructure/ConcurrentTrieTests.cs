@@ -53,54 +53,6 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
-        // [Ignore("Not a test, used for profiling.")]
-        public void Profile()
-        {
-            var sut = new ConcurrentTrie<byte>();
-            var sw = new Stopwatch();
-            var memory = GC.GetTotalMemory(true);
-            sw.Start();
-            for (var i = 0; i < 1000000; i++)
-                sut.Add(Guid.NewGuid().ToString(), 0);
-            sw.Stop();
-            var delta = GC.GetTotalMemory(true) - memory;
-            Console.WriteLine(sw.ElapsedMilliseconds);
-            Console.WriteLine(delta);
-        }
-
-        [Test]
-        // [Ignore("Concurrency tests are inherently flaky, and may give false positives. Run manually when needed.")]
-        public void DoesNotBreakDuringParallelExecution()
-        {
-            for (var k = 0; k < 1; k++)
-            {
-                var sut = new ConcurrentTrie<int>();
-                var sw = new Stopwatch();
-                var memory = GC.GetTotalMemory(true);
-                sw.Start();
-                Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, j =>
-                {
-                    for (var i = 0; i < 1000; i++)
-                    {
-                        var s = $"{i}-{j}";
-                        sut.Add(s, i);
-                        // test one of the below operations
-                        sut.TryGetValue(s, out var value).Should().BeTrue();
-                        value.Should().Be(i);
-                        sut.Remove(s);
-                        sut.TryGetValue(s, out _).Should().BeFalse();
-                        // sut.Prune($"{i}-", out var st);
-                    }
-                });
-                sw.Stop();
-                var delta = GC.GetTotalMemory(true) - memory;
-                Console.WriteLine(sw.ElapsedMilliseconds);
-                Console.WriteLine(delta);
-                Console.WriteLine(sut.Keys.Count());
-            }
-        }
-
-        [Test]
         public void CanRemoveValue()
         {
             var sut = new ConcurrentTrie<int>();
@@ -211,6 +163,74 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
             sut.Add("abc", 1);
             sut.Clear();
             sut.Keys.Should().BeEmpty();
+        }
+
+        [Test]
+        [Ignore("Not a test, used for profiling.")]
+        public void Profile()
+        {
+            var sut = new ConcurrentTrie<byte>();
+            var sw = new Stopwatch();
+            var memory = GC.GetTotalMemory(true);
+            sw.Start();
+            for (var i = 0; i < 1000000; i++)
+                sut.Add(Guid.NewGuid().ToString(), 0);
+            sw.Stop();
+            var delta = GC.GetTotalMemory(true) - memory;
+            Console.WriteLine(sw.ElapsedMilliseconds);
+            Console.WriteLine(delta);
+        }
+
+        [Test]
+        [Ignore("Concurrency tests are inherently flaky, and may give false positives. Enable manually when needed.")]
+        public void DoesNotBreakDuringParallelAddRemove()
+        {
+            var sut = new ConcurrentTrie<int>();
+            var sw = new Stopwatch();
+            var memory = GC.GetTotalMemory(true);
+            sw.Start();
+            Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, j =>
+            {
+                for (var i = 0; i < 1000; i++)
+                {
+                    var s = $"{i}-{j}";
+                    sut.Add(s, i);
+                    sut.TryGetValue(s, out var value).Should().BeTrue();
+                    value.Should().Be(i);
+                    sut.Remove(s);
+                    sut.TryGetValue(s, out _).Should().BeFalse();
+                }
+            });
+            sw.Stop();
+            var delta = GC.GetTotalMemory(true) - memory;
+            Console.WriteLine(sw.ElapsedMilliseconds);
+            Console.WriteLine(delta);
+            sut.Keys.Count().Should().Be(0);
+        }
+
+        [Test]
+        [Ignore("Concurrency tests are inherently flaky, and may give false positives. Enable manually when needed.")]
+        public void DoesNotBreakDuringParallelAddPrune()
+        {
+            var sut = new ConcurrentTrie<int>();
+            var sw = new Stopwatch();
+            var memory = GC.GetTotalMemory(true);
+            sw.Start();
+            Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 8 }, j =>
+            {
+                for (var i = 0; i < 1000; i++)
+                {
+                    var s = $"{j}-{i}";
+                    sut.Add(s, i);
+                }
+                sut.Prune($"{j}-", out var st);
+                st.Keys.Count().Should().Be(1000);
+            });
+            sw.Stop();
+            var delta = GC.GetTotalMemory(true) - memory;
+            Console.WriteLine(sw.ElapsedMilliseconds);
+            Console.WriteLine(delta);
+            sut.Keys.Count().Should().Be(0);
         }
     }
 }
