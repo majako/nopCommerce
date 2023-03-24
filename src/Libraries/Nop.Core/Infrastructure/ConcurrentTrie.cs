@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nop.Core.Infrastructure
@@ -221,6 +222,7 @@ namespace Nop.Core.Infrastructure
             return false;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int GetCommonPrefixLength(ReadOnlySpan<char> s1, ReadOnlySpan<char> s2)
         {
             var i = 0;
