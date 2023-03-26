@@ -15,11 +15,12 @@ namespace Nop.Core.Infrastructure
         {
             private record ValueWrapper(TValue Value);
 
+            private static readonly ValueWrapper _deleted = new(default);
             public readonly string Label;
             public readonly Dictionary<char, TrieNode> Children = new();
-            public volatile bool Deleted;
             private volatile ValueWrapper _value;
 
+            public bool IsDeleted => _value == _deleted;
             public bool HasValue => _value != null;
 
             public TrieNode(string label = "")
@@ -65,6 +66,11 @@ namespace Nop.Core.Infrastructure
                 var wrapper = Interlocked.CompareExchange(ref _value, new(value), null);
                 return wrapper != null ? wrapper.Value : value;
             }
+
+            public void Delete()
+            {
+                _value = _deleted;
+            }
         }
 
         private record struct InternalSearchResult(string Key, TrieNode Node, TValue Value);
@@ -98,7 +104,7 @@ namespace Nop.Core.Infrastructure
         /// <summary>
         /// Attempts to get the value associated with the specified key
         /// </summary>
-        /// <param name="key">The key of the item to get (case-insensitive)</param>
+        /// <param name="key">The key of the item to get (case-sensitive)</param>
         /// <param name="value">The value associated with <paramref name="key"/>, if found</param>
         /// <returns>
         /// True if the key was found, otherwise false
@@ -115,7 +121,7 @@ namespace Nop.Core.Infrastructure
         /// <summary>
         /// Adds a key-value pair to the trie
         /// </summary>
-        /// <param name="key">The key of the new item (case-insensitive)</param>
+        /// <param name="key">The key of the new item (case-sensitive)</param>
         /// <param name="value">The value to be associated with <paramref name="key"/></param>
         public void Add(string key, TValue value)
         {
@@ -335,7 +341,7 @@ namespace Nop.Core.Infrastructure
             try
             {
                 // we use while instead of if so we can break
-                while (!node.Deleted && node.Children.TryGetValue(c, out nextNode))
+                while (!node.IsDeleted && node.Children.TryGetValue(c, out nextNode))
                 {
                     var label = nextNode.Label.AsSpan();
                     var i = GetCommonPrefixLength(label, suffix);
@@ -439,26 +445,26 @@ namespace Nop.Core.Infrastructure
                         var nChildren = node.Children.Count;
                         if (nChildren == 0) // if the node has no children, we can just remove it
                         {
-                            if (!parent.Children.TryGetValue(c, out var n) || n != node || node.HasValue)
+                            if (!parent.Children.TryGetValue(c, out var n) || n != node)
                                 break;  // was removed or replaced by another thread
                             parentLock.EnterWriteLock();
                             try
                             {
                                 parent.Children.Remove(c, out _);
-                                node.Deleted = true;
+                                node.Delete();
                             }
                             finally { parentLock.ExitWriteLock(); }
                         }
                         else if (nChildren == 1)    // if there is a single child, we can merge it with node
                         {
-                            if (!parent.Children.TryGetValue(c, out var n) || n != node || node.HasValue)
+                            if (!parent.Children.TryGetValue(c, out var n) || n != node)
                                 break;  // was removed or replaced by another thread
                             parentLock.EnterWriteLock();
                             try
                             {
                                 var child = node.Children.FirstOrDefault().Value;
                                 parent.Children[c] = new TrieNode(node.Label + child.Label, child);
-                                node.Deleted = true;
+                                node.Delete();
                             }
                             finally { parentLock.ExitWriteLock(); }
                         }
