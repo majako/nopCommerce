@@ -390,7 +390,7 @@ namespace Nop.Core.Infrastructure
                                         {
                                             c = parent.Label[0];
                                             if (!grandparent.Children.TryGetValue(c, out n) || n != parent || parent.HasValue)
-                                                break;
+                                                return;
                                             var child = parent.Children.First().Value;
                                             grandparent.Children[c] = new TrieNode(parent.Label + child.Label, child);
                                             parent.Delete();
