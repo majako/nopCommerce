@@ -1,7 +1,4 @@
-﻿using System;
-using System.Linq;
-using System.Threading.Tasks;
-using Nop.Core.Domain.Vendors;
+﻿using Nop.Core.Domain.Vendors;
 using Nop.Services.Attributes;
 using Nop.Services.Localization;
 using Nop.Web.Areas.Admin.Infrastructure.Mapper.Extensions;
@@ -18,10 +15,10 @@ namespace Nop.Web.Areas.Admin.Factories
     {
         #region Fields
 
-        private readonly IAttributeService<VendorAttribute, VendorAttributeValue> _vendorAttributeService;
-        private readonly ILocalizationService _localizationService;
-        private readonly ILocalizedModelFactory _localizedModelFactory;
-        
+        protected readonly IAttributeService<VendorAttribute, VendorAttributeValue> _vendorAttributeService;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly ILocalizedModelFactory _localizedModelFactory;
+
         #endregion
 
         #region Ctor

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Linq;
-using System.Net;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+﻿using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using Nop.Core;
@@ -32,22 +28,22 @@ namespace Nop.Web.Controllers
     {
         #region Fields
 
-        private readonly CaptchaSettings _captchaSettings;
-        private readonly IAttributeParser<VendorAttribute, VendorAttributeValue> _vendorAttributeParser;
-        private readonly IAttributeService<VendorAttribute, VendorAttributeValue> _vendorAttributeService;
-        private readonly ICustomerService _customerService;
-        private readonly IDownloadService _downloadService;
-        private readonly IGenericAttributeService _genericAttributeService;
-        private readonly IHtmlFormatter _htmlFormatter;
-        private readonly ILocalizationService _localizationService;
-        private readonly IPictureService _pictureService;
-        private readonly IUrlRecordService _urlRecordService;
-        private readonly IVendorModelFactory _vendorModelFactory;
-        private readonly IVendorService _vendorService;
-        private readonly IWorkContext _workContext;
-        private readonly IWorkflowMessageService _workflowMessageService;
-        private readonly LocalizationSettings _localizationSettings;
-        private readonly VendorSettings _vendorSettings;
+        protected readonly CaptchaSettings _captchaSettings;
+        protected readonly IAttributeParser<VendorAttribute, VendorAttributeValue> _vendorAttributeParser;
+        protected readonly IAttributeService<VendorAttribute, VendorAttributeValue> _vendorAttributeService;
+        protected readonly ICustomerService _customerService;
+        protected readonly IDownloadService _downloadService;
+        protected readonly IGenericAttributeService _genericAttributeService;
+        protected readonly IHtmlFormatter _htmlFormatter;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly IPictureService _pictureService;
+        protected readonly IUrlRecordService _urlRecordService;
+        protected readonly IVendorModelFactory _vendorModelFactory;
+        protected readonly IVendorService _vendorService;
+        protected readonly IWorkContext _workContext;
+        protected readonly IWorkflowMessageService _workflowMessageService;
+        protected readonly LocalizationSettings _localizationSettings;
+        protected readonly VendorSettings _vendorSettings;
 
         #endregion
 
@@ -224,7 +220,7 @@ namespace Nop.Web.Controllers
                 {
                     var contentType = uploadedFile.ContentType.ToLowerInvariant();
 
-                    if(!contentType.StartsWith("image/") || contentType.StartsWith("image/svg"))
+                    if (!contentType.StartsWith("image/") || contentType.StartsWith("image/svg"))
                         ModelState.AddModelError("", await _localizationService.GetResourceAsync("Vendors.ApplyAccount.Picture.ErrorMessage"));
                     else
                     {
@@ -244,7 +240,7 @@ namespace Nop.Web.Controllers
             //vendor attributes
             var vendorAttributesXml = await ParseVendorAttributesAsync(form);
             var warnings = (await _vendorAttributeParser.GetAttributeWarningsAsync(vendorAttributesXml)).ToList();
-            foreach(var warning in warnings)
+            foreach (var warning in warnings)
             {
                 ModelState.AddModelError(string.Empty, warning);
             }
@@ -262,7 +258,7 @@ namespace Nop.Web.Controllers
                     AllowCustomersToSelectPageSize = true,
                     PageSizeOptions = _vendorSettings.DefaultVendorPageSizeOptions,
                     PictureId = pictureId,
-                    Description = WebUtility.HtmlEncode(description) 
+                    Description = WebUtility.HtmlEncode(description)
                 };
                 await _vendorService.InsertVendorAsync(vendor);
                 //search engine name (the same as vendor name)

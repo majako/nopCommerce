@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using System.Globalization;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Nop.Core;
 using Nop.Core.Domain.Catalog;
@@ -43,44 +39,44 @@ namespace Nop.Web.Factories
     {
         #region Fields
 
-        private readonly AddressSettings _addressSettings;
-        private readonly CaptchaSettings _captchaSettings;
-        private readonly CatalogSettings _catalogSettings;
-        private readonly CommonSettings _commonSettings;
-        private readonly CustomerSettings _customerSettings;
-        private readonly DateTimeSettings _dateTimeSettings;
-        private readonly ExternalAuthenticationSettings _externalAuthenticationSettings;
-        private readonly ForumSettings _forumSettings;
-        private readonly GdprSettings _gdprSettings;
-        private readonly IAddressModelFactory _addressModelFactory;
-        private readonly IAttributeParser<CustomerAttribute, CustomerAttributeValue> _customerAttributeParser;
-        private readonly IAttributeService<CustomerAttribute, CustomerAttributeValue> _customerAttributeService;
-        private readonly IAuthenticationPluginManager _authenticationPluginManager;
-        private readonly ICountryService _countryService;
-        private readonly ICustomerService _customerService;
-        private readonly IDateTimeHelper _dateTimeHelper;
-        private readonly IExternalAuthenticationService _externalAuthenticationService;
-        private readonly IGdprService _gdprService;
-        private readonly IGenericAttributeService _genericAttributeService;
-        private readonly ILocalizationService _localizationService;
-        private readonly IMultiFactorAuthenticationPluginManager _multiFactorAuthenticationPluginManager;
-        private readonly INewsLetterSubscriptionService _newsLetterSubscriptionService;
-        private readonly IOrderService _orderService;
-        private readonly IPermissionService _permissionService;
-        private readonly IPictureService _pictureService;
-        private readonly IProductService _productService;
-        private readonly IReturnRequestService _returnRequestService;
-        private readonly IStateProvinceService _stateProvinceService;
-        private readonly IStoreContext _storeContext;
-        private readonly IStoreMappingService _storeMappingService;
-        private readonly IUrlRecordService _urlRecordService;
-        private readonly IWorkContext _workContext;
-        private readonly MediaSettings _mediaSettings;
-        private readonly OrderSettings _orderSettings;
-        private readonly RewardPointsSettings _rewardPointsSettings;
-        private readonly SecuritySettings _securitySettings;
-        private readonly TaxSettings _taxSettings;
-        private readonly VendorSettings _vendorSettings;
+        protected readonly AddressSettings _addressSettings;
+        protected readonly CaptchaSettings _captchaSettings;
+        protected readonly CatalogSettings _catalogSettings;
+        protected readonly CommonSettings _commonSettings;
+        protected readonly CustomerSettings _customerSettings;
+        protected readonly DateTimeSettings _dateTimeSettings;
+        protected readonly ExternalAuthenticationSettings _externalAuthenticationSettings;
+        protected readonly ForumSettings _forumSettings;
+        protected readonly GdprSettings _gdprSettings;
+        protected readonly IAddressModelFactory _addressModelFactory;
+        protected readonly IAttributeParser<CustomerAttribute, CustomerAttributeValue> _customerAttributeParser;
+        protected readonly IAttributeService<CustomerAttribute, CustomerAttributeValue> _customerAttributeService;
+        protected readonly IAuthenticationPluginManager _authenticationPluginManager;
+        protected readonly ICountryService _countryService;
+        protected readonly ICustomerService _customerService;
+        protected readonly IDateTimeHelper _dateTimeHelper;
+        protected readonly IExternalAuthenticationService _externalAuthenticationService;
+        protected readonly IGdprService _gdprService;
+        protected readonly IGenericAttributeService _genericAttributeService;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly IMultiFactorAuthenticationPluginManager _multiFactorAuthenticationPluginManager;
+        protected readonly INewsLetterSubscriptionService _newsLetterSubscriptionService;
+        protected readonly IOrderService _orderService;
+        protected readonly IPermissionService _permissionService;
+        protected readonly IPictureService _pictureService;
+        protected readonly IProductService _productService;
+        protected readonly IReturnRequestService _returnRequestService;
+        protected readonly IStateProvinceService _stateProvinceService;
+        protected readonly IStoreContext _storeContext;
+        protected readonly IStoreMappingService _storeMappingService;
+        protected readonly IUrlRecordService _urlRecordService;
+        protected readonly IWorkContext _workContext;
+        protected readonly MediaSettings _mediaSettings;
+        protected readonly OrderSettings _orderSettings;
+        protected readonly RewardPointsSettings _rewardPointsSettings;
+        protected readonly SecuritySettings _securitySettings;
+        protected readonly TaxSettings _taxSettings;
+        protected readonly VendorSettings _vendorSettings;
 
         #endregion
 
@@ -263,6 +259,9 @@ namespace Nop.Web.Factories
             //countries and states
             if (_customerSettings.CountryEnabled)
             {
+                if (model.CountryId == 0)
+                    model.CountryId = _customerSettings.DefaultCountryId ?? 0;
+
                 model.AvailableCountries.Add(new SelectListItem { Text = await _localizationService.GetResourceAsync("Address.SelectCountry"), Value = "0" });
                 foreach (var c in await _countryService.GetAllCountriesAsync(currentLanguage.Id))
                 {
@@ -427,7 +426,7 @@ namespace Nop.Web.Factories
             model.CountyEnabled = _customerSettings.CountyEnabled;
             model.CountyRequired = _customerSettings.CountyRequired;
             model.CountryEnabled = _customerSettings.CountryEnabled;
-            model.CountryRequired = _customerSettings.CountryRequired;
+            model.CountryRequired = _customerSettings.CountryRequired;            
             model.StateProvinceEnabled = _customerSettings.StateProvinceEnabled;
             model.StateProvinceRequired = _customerSettings.StateProvinceRequired;
             model.PhoneEnabled = _customerSettings.PhoneEnabled;
@@ -452,6 +451,7 @@ namespace Nop.Web.Factories
             if (_customerSettings.CountryEnabled)
             {
                 model.AvailableCountries.Add(new SelectListItem { Text = await _localizationService.GetResourceAsync("Address.SelectCountry"), Value = "0" });
+                model.CountryId = _customerSettings.DefaultCountryId ?? 0;
                 var currentLanguage = await _workContext.GetWorkingLanguageAsync();
                 foreach (var c in await _countryService.GetAllCountriesAsync(currentLanguage.Id))
                 {
@@ -461,7 +461,7 @@ namespace Nop.Web.Factories
                         Value = c.Id.ToString(),
                         Selected = c.Id == model.CountryId
                     });
-                }
+                }                
 
                 if (_customerSettings.StateProvinceEnabled)
                 {

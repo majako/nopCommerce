@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.ObjectModel;
-using System.Threading.Tasks;
+﻿using System.Collections.ObjectModel;
 using Nop.Core;
 using Nop.Core.Domain.Customers;
 
@@ -13,8 +11,8 @@ namespace Nop.Services.Helpers
     {
         #region Fields
 
-        private readonly DateTimeSettings _dateTimeSettings;
-        private readonly IWorkContext _workContext;
+        protected readonly DateTimeSettings _dateTimeSettings;
+        protected readonly IWorkContext _workContext;
 
         #endregion
 
@@ -184,7 +182,7 @@ namespace Nop.Services.Helpers
         /// </returns>
         public virtual async Task<TimeZoneInfo> GetCurrentTimeZoneAsync()
         {
-           return await GetCustomerTimeZoneAsync(await _workContext.GetCurrentCustomerAsync());
+            return await GetCustomerTimeZoneAsync(await _workContext.GetCurrentCustomerAsync());
         }
 
         /// <summary>

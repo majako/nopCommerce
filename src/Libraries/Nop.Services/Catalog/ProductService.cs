@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Nop.Core;
+﻿using Nop.Core;
 using Nop.Core.Caching;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Common;
@@ -865,11 +861,14 @@ namespace Nop.Services.Catalog
             else if (overridePublished.HasValue)
                 productsQuery = productsQuery.Where(p => p.Published == overridePublished.Value);
 
-            if (!showHidden)
+            if (!showHidden || storeId > 0)
             {
                 //apply store mapping constraints
                 productsQuery = await _storeMappingService.ApplyStoreMapping(productsQuery, storeId);
+            }
 
+            if (!showHidden)
+            {
                 //apply ACL constraints
                 var customer = await _workContext.GetCurrentCustomerAsync();
                 productsQuery = await _aclService.ApplyAcl(productsQuery, customer);

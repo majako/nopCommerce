@@ -1,7 +1,5 @@
-﻿using System;
-using System.Net;
+﻿using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Customers;
@@ -23,16 +21,16 @@ namespace Nop.Services.Orders
     {
         #region Fields
 
-        private readonly IAttributeParser<CheckoutAttribute, CheckoutAttributeValue> _checkoutAttributeParser;
-        private readonly IAttributeService<CheckoutAttribute, CheckoutAttributeValue> _checkoutAttributeService;
-        private readonly ICurrencyService _currencyService;
-        private readonly IDownloadService _downloadService;
-        private readonly IHtmlFormatter _htmlFormatter;
-        private readonly ILocalizationService _localizationService;
-        private readonly IPriceFormatter _priceFormatter;
-        private readonly ITaxService _taxService;
-        private readonly IWebHelper _webHelper;
-        private readonly IWorkContext _workContext;
+        protected readonly IAttributeParser<CheckoutAttribute, CheckoutAttributeValue> _checkoutAttributeParser;
+        protected readonly IAttributeService<CheckoutAttribute, CheckoutAttributeValue> _checkoutAttributeService;
+        protected readonly ICurrencyService _currencyService;
+        protected readonly IDownloadService _downloadService;
+        protected readonly IHtmlFormatter _htmlFormatter;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly IPriceFormatter _priceFormatter;
+        protected readonly ITaxService _taxService;
+        protected readonly IWebHelper _webHelper;
+        protected readonly IWorkContext _workContext;
 
         #endregion
 
@@ -64,7 +62,7 @@ namespace Nop.Services.Orders
         #endregion
 
         #region Methods
-        
+
         /// <summary>
         /// Formats attributes
         /// </summary>

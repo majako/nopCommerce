@@ -1,6 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Nop.Core.Domain.Customers;
 using Nop.Services.Attributes;
 using Nop.Services.Localization;
@@ -19,13 +17,13 @@ namespace Nop.Web.Areas.Admin.Controllers
     {
         #region Fields
 
-        private readonly IAttributeService<CustomerAttribute, CustomerAttributeValue> _customerAttributeService;
-        private readonly ICustomerActivityService _customerActivityService;
-        private readonly ICustomerAttributeModelFactory _customerAttributeModelFactory;
-        private readonly ILocalizationService _localizationService;
-        private readonly ILocalizedEntityService _localizedEntityService;
-        private readonly INotificationService _notificationService;
-        private readonly IPermissionService _permissionService;
+        protected readonly IAttributeService<CustomerAttribute, CustomerAttributeValue> _customerAttributeService;
+        protected readonly ICustomerActivityService _customerActivityService;
+        protected readonly ICustomerAttributeModelFactory _customerAttributeModelFactory;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly ILocalizedEntityService _localizedEntityService;
+        protected readonly INotificationService _notificationService;
+        protected readonly IPermissionService _permissionService;
 
         #endregion
 
@@ -141,10 +139,10 @@ namespace Nop.Web.Areas.Admin.Controllers
 
                 if (!continueEditing)
                     return RedirectToAction("List");
-                
+
                 return RedirectToAction("Edit", new { id = customerAttribute.Id });
             }
-            
+
             //prepare model
             model = await _customerAttributeModelFactory.PrepareCustomerAttributeModelAsync(model, null, true);
 
@@ -198,7 +196,7 @@ namespace Nop.Web.Areas.Admin.Controllers
 
             if (!continueEditing)
                 return RedirectToAction("List");
-            
+
             return RedirectToAction("Edit", new { id = customerAttribute.Id });
         }
 

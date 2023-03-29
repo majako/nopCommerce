@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nop.Core;
+﻿using Nop.Core;
 using Nop.Core.Domain.Cms;
 using Nop.Plugin.Widgets.GoogleAnalytics.Components;
 using Nop.Services.Cms;
@@ -19,10 +16,10 @@ namespace Nop.Plugin.Widgets.GoogleAnalytics
     {
         #region Fields
 
-        private readonly ILocalizationService _localizationService;
-        private readonly IWebHelper _webHelper;
-        private readonly ISettingService _settingService;
-        private readonly WidgetSettings _widgetSettings;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly IWebHelper _webHelper;
+        protected readonly ISettingService _settingService;
+        protected readonly WidgetSettings _widgetSettings;
 
         #endregion
 

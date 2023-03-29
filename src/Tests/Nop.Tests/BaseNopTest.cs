@@ -1,11 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
+﻿using System.ComponentModel;
+using System.Globalization;
 using System.Resources;
-using System.Threading;
-using System.Threading.Tasks;
 using FluentAssertions;
 using FluentMigrator;
 using FluentMigrator.Runner;
@@ -114,8 +109,11 @@ namespace Nop.Tests
 
             var languagePackInfo = (DownloadUrl: string.Empty, Progress: 0);
 
+            var cultureInfo = new CultureInfo(NopCommonDefaults.DefaultLanguageCulture);
+            var regionInfo = new RegionInfo(NopCommonDefaults.DefaultLanguageCulture);
+
             _serviceProvider.GetService<IInstallationService>()
-                .InstallRequiredDataAsync(NopTestsDefaults.AdminEmail, NopTestsDefaults.AdminPassword, languagePackInfo, null, null).Wait();
+                .InstallRequiredDataAsync(NopTestsDefaults.AdminEmail, NopTestsDefaults.AdminPassword, languagePackInfo, regionInfo, cultureInfo).Wait();
             _serviceProvider.GetService<IInstallationService>().InstallSampleDataAsync(NopTestsDefaults.AdminEmail).Wait();
 
             var provider = (IPermissionProvider)Activator.CreateInstance(typeof(StandardPermissionProvider));
@@ -268,7 +266,7 @@ namespace Nop.Tests
             services.AddSingleton<IDistributedCache>(memoryDistributedCache);
             services.AddScoped<MemoryDistributedCacheManager>();
             services.AddSingleton(new DistributedCacheLocker(memoryDistributedCache));
-            
+
             //services
             services.AddTransient<IBackInStockSubscriptionService, BackInStockSubscriptionService>();
             services.AddTransient<ICategoryService, CategoryService>();
@@ -290,7 +288,7 @@ namespace Nop.Tests
             services.AddTransient<IAddressService, AddressService>();
             services.AddTransient<IAffiliateService, AffiliateService>();
             services.AddTransient<IVendorService, VendorService>();
-            
+
             //attribute services
             services.AddScoped(typeof(IAttributeService<,>), typeof(AttributeService<,>));
 

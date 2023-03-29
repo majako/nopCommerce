@@ -1,6 +1,5 @@
 ﻿using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 using Nop.Core;
 using Nop.Core.Domain.Attributes;
 using Nop.Core.Domain.Catalog;
@@ -19,11 +18,11 @@ namespace Nop.Services.Attributes
     {
         #region Fields
 
-        private readonly IAttributeParser<TAttribute, TAttributeValue> _attributeParser;
-        private readonly IAttributeService<TAttribute, TAttributeValue> _attributeService;
-        private readonly IHtmlFormatter _htmlFormatter;
-        private readonly ILocalizationService _localizationService;
-        private readonly IWorkContext _workContext;
+        protected readonly IAttributeParser<TAttribute, TAttributeValue> _attributeParser;
+        protected readonly IAttributeService<TAttribute, TAttributeValue> _attributeService;
+        protected readonly IHtmlFormatter _htmlFormatter;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly IWorkContext _workContext;
 
         #endregion
 

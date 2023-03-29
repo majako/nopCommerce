@@ -1,8 +1,7 @@
-﻿using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc.Rendering;
-using Nop.Web.Framework.Mvc.ModelBinding;
 using Nop.Web.Framework.Models;
+using Nop.Web.Framework.Mvc.ModelBinding;
 
 namespace Nop.Web.Models.Common
 {
@@ -34,6 +33,8 @@ namespace Nop.Web.Models.Common
         public int? CountryId { get; set; }
         [NopResourceDisplayName("Address.Fields.Country")]
         public string CountryName { get; set; }
+                
+        public int? DefaultCountryId { get; set; }
 
         public bool StateProvinceEnabled { get; set; }
         [NopResourceDisplayName("Address.Fields.StateProvince")]

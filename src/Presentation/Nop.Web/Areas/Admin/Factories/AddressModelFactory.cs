@@ -1,6 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
-using Nop.Core.Domain.Common;
+﻿using Nop.Core.Domain.Common;
 using Nop.Services.Attributes;
 using Nop.Web.Areas.Admin.Models.Common;
 
@@ -13,9 +11,9 @@ namespace Nop.Web.Areas.Admin.Factories
     {
         #region Fields
 
-        private readonly IAddressAttributeModelFactory _addressAttributeModelFactory;
-        private readonly IAttributeFormatter<AddressAttribute, AddressAttributeValue> _addressAttributeFormatter;
-        private readonly IBaseAdminModelFactory _baseAdminModelFactory;
+        protected readonly IAddressAttributeModelFactory _addressAttributeModelFactory;
+        protected readonly IAttributeFormatter<AddressAttribute, AddressAttributeValue> _addressAttributeFormatter;
+        protected readonly IBaseAdminModelFactory _baseAdminModelFactory;
 
         #endregion
 

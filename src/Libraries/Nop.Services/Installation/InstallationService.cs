@@ -1,11 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
+﻿using System.Globalization;
 using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Nop.Core;
 using Nop.Core.Domain;
@@ -60,36 +54,36 @@ namespace Nop.Services.Installation
     {
         #region Fields
 
-        private readonly INopDataProvider _dataProvider;
-        private readonly INopFileProvider _fileProvider;
-        private readonly IRepository<ActivityLogType> _activityLogTypeRepository;
-        private readonly IRepository<Address> _addressRepository;
-        private readonly IRepository<Category> _categoryRepository;
-        private readonly IRepository<CategoryTemplate> _categoryTemplateRepository;
-        private readonly IRepository<Country> _countryRepository;
-        private readonly IRepository<Currency> _currencyRepository;
-        private readonly IRepository<Customer> _customerRepository;
-        private readonly IRepository<CustomerRole> _customerRoleRepository;
-        private readonly IRepository<DeliveryDate> _deliveryDateRepository;
-        private readonly IRepository<EmailAccount> _emailAccountRepository;
-        private readonly IRepository<Language> _languageRepository;
-        private readonly IRepository<Manufacturer> _manufacturerRepository;
-        private readonly IRepository<ManufacturerTemplate> _manufacturerTemplateRepository;
-        private readonly IRepository<MeasureDimension> _measureDimensionRepository;
-        private readonly IRepository<MeasureWeight> _measureWeightRepository;
-        private readonly IRepository<Product> _productRepository;
-        private readonly IRepository<ProductAttribute> _productAttributeRepository;
-        private readonly IRepository<ProductAvailabilityRange> _productAvailabilityRangeRepository;
-        private readonly IRepository<ProductTag> _productTagRepository;
-        private readonly IRepository<ProductTemplate> _productTemplateRepository;
-        private readonly IRepository<SpecificationAttribute> _specificationAttributeRepository;
-        private readonly IRepository<SpecificationAttributeOption> _specificationAttributeOptionRepository;
-        private readonly IRepository<StateProvince> _stateProvinceRepository;
-        private readonly IRepository<Store> _storeRepository;
-        private readonly IRepository<TaxCategory> _taxCategoryRepository;
-        private readonly IRepository<TopicTemplate> _topicTemplateRepository;
-        private readonly IRepository<UrlRecord> _urlRecordRepository;
-        private readonly IWebHelper _webHelper;
+        protected readonly INopDataProvider _dataProvider;
+        protected readonly INopFileProvider _fileProvider;
+        protected readonly IRepository<ActivityLogType> _activityLogTypeRepository;
+        protected readonly IRepository<Address> _addressRepository;
+        protected readonly IRepository<Category> _categoryRepository;
+        protected readonly IRepository<CategoryTemplate> _categoryTemplateRepository;
+        protected readonly IRepository<Country> _countryRepository;
+        protected readonly IRepository<Currency> _currencyRepository;
+        protected readonly IRepository<Customer> _customerRepository;
+        protected readonly IRepository<CustomerRole> _customerRoleRepository;
+        protected readonly IRepository<DeliveryDate> _deliveryDateRepository;
+        protected readonly IRepository<EmailAccount> _emailAccountRepository;
+        protected readonly IRepository<Language> _languageRepository;
+        protected readonly IRepository<Manufacturer> _manufacturerRepository;
+        protected readonly IRepository<ManufacturerTemplate> _manufacturerTemplateRepository;
+        protected readonly IRepository<MeasureDimension> _measureDimensionRepository;
+        protected readonly IRepository<MeasureWeight> _measureWeightRepository;
+        protected readonly IRepository<Product> _productRepository;
+        protected readonly IRepository<ProductAttribute> _productAttributeRepository;
+        protected readonly IRepository<ProductAvailabilityRange> _productAvailabilityRangeRepository;
+        protected readonly IRepository<ProductTag> _productTagRepository;
+        protected readonly IRepository<ProductTemplate> _productTemplateRepository;
+        protected readonly IRepository<SpecificationAttribute> _specificationAttributeRepository;
+        protected readonly IRepository<SpecificationAttributeOption> _specificationAttributeOptionRepository;
+        protected readonly IRepository<StateProvince> _stateProvinceRepository;
+        protected readonly IRepository<Store> _storeRepository;
+        protected readonly IRepository<TaxCategory> _taxCategoryRepository;
+        protected readonly IRepository<TopicTemplate> _topicTemplateRepository;
+        protected readonly IRepository<UrlRecord> _urlRecordRepository;
+        protected readonly IWebHelper _webHelper;
 
         #endregion
 
@@ -3056,7 +3050,8 @@ namespace Nop.Services.Installation
                 DeleteGuestTaskOlderThanMinutes = 1440,
                 PhoneNumberValidationEnabled = false,
                 PhoneNumberValidationUseRegex = false,
-                PhoneNumberValidationRule = "^[0-9]{1,14}?$"
+                PhoneNumberValidationRule = "^[0-9]{1,14}?$",
+                DefaultCountryId = _countryRepository.Table.FirstOrDefault(c => c.ThreeLetterIsoCode == regionInfo.ThreeLetterISORegionName)?.Id
             });
 
             await settingService.SaveSettingAsync(new MultiFactorAuthenticationSettings
@@ -3080,7 +3075,8 @@ namespace Nop.Services.Installation
                 StateProvinceEnabled = true,
                 PhoneEnabled = true,
                 PhoneRequired = true,
-                FaxEnabled = true
+                FaxEnabled = true,
+                DefaultCountryId = _countryRepository.Table.FirstOrDefault(c => c.ThreeLetterIsoCode == regionInfo.ThreeLetterISORegionName)?.Id
             });
 
             await settingService.SaveSettingAsync(new MediaSettings
@@ -3250,7 +3246,8 @@ namespace Nop.Services.Installation
                 HoneypotEnabled = false,
                 HoneypotInputName = "hpinput",
                 AllowNonAsciiCharactersInHeaders = true,
-                UseAesEncryptionAlgorithm = true
+                UseAesEncryptionAlgorithm = true,
+                AllowStoreOwnerExportImportCustomersWithHashedPassword = true
             });
 
             await settingService.SaveSettingAsync(new ShippingSettings
@@ -3276,7 +3273,7 @@ namespace Nop.Services.Installation
                 BypassShippingMethodSelectionIfOnlyOne = false,
                 UseCubeRootMethod = true,
                 ConsiderAssociatedProductsDimensions = true,
-                ShipSeparatelyOneItemEach = true,
+                ShipSeparatelyOneItemEach = false,
                 RequestDelay = 300,
                 ShippingSorting = ShippingSortingEnum.Position,
             });
@@ -8913,6 +8910,12 @@ namespace Nop.Services.Installation
                 },
                 new ActivityLogType
                 {
+                    SystemKeyword = "ImportCustomers",
+                    Enabled = true,
+                    Name = "Customers were imported"
+                },
+                new ActivityLogType
+                {
                     SystemKeyword = "ImportNewsLetterSubscriptions",
                     Enabled = true,
                     Name = "Newsletter subscriptions were imported"
@@ -9451,7 +9454,7 @@ namespace Nop.Services.Installation
         }
 
         /// <returns>A task that represents the asynchronous operation</returns>
-        private async Task AddProductTagAsync(Product product, string tag)
+        protected virtual async Task AddProductTagAsync(Product product, string tag)
         {
             var productTag = _productTagRepository.Table.FirstOrDefault(pt => pt.Name == tag);
 

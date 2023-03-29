@@ -1,5 +1,4 @@
-﻿using System.Collections.Generic;
-using Nop.Core.Configuration;
+﻿using Nop.Core.Configuration;
 
 namespace Nop.Core.Domain.Security
 {
@@ -37,5 +36,10 @@ namespace Nop.Core.Domain.Security
         /// Gets or sets a value indicating whether the Advanced Encryption Standard (AES) is used
         /// </summary>
         public bool UseAesEncryptionAlgorithm { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to allow export and import customers with hashed password
+        /// </summary>
+        public bool AllowStoreOwnerExportImportCustomersWithHashedPassword { get; set; }
     }
 }

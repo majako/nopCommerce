@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Xml;
+﻿using System.Xml;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Nop.Core.Domain.Attributes;
@@ -17,7 +13,7 @@ namespace Nop.Services.Attributes
     /// <typeparam name="TAttribute">Type of the attribute (see <see cref="BaseAttribute"/>)</typeparam>
     /// <typeparam name="TAttributeValue">Type of the attribute value (see <see cref="BaseAttributeValue"/>)</typeparam>
     public partial class AttributeParser<TAttribute, TAttributeValue> : IAttributeParser<TAttribute, TAttributeValue>
-        where TAttribute : BaseAttribute 
+        where TAttribute : BaseAttribute
         where TAttributeValue : BaseAttributeValue
     {
         #region Fields
@@ -43,15 +39,15 @@ namespace Nop.Services.Attributes
         }
 
         #endregion
-        
+
         #region Utilities
 
         /// <summary>
         /// Gets attribute values
         /// </summary>
         /// <param name="valuesStr">string value attribute identifiers</param>
-        /// <returns></returns>
-        protected async IAsyncEnumerable<TAttributeValue> GetValuesAsync(IList<string> valuesStr)
+        /// <returns>Attribute values</returns>
+        protected virtual async IAsyncEnumerable<TAttributeValue> GetValuesAsync(IList<string> valuesStr)
         {
             foreach (var valueStr in valuesStr)
             {
@@ -135,7 +131,7 @@ namespace Nop.Services.Attributes
 
             return result;
         }
-        
+
         /// <summary>
         /// Remove an attribute
         /// </summary>
@@ -233,7 +229,7 @@ namespace Nop.Services.Attributes
 
                     var nodeList2 = node1.SelectNodes(@$"{_attributeValueName}/Value");
 
-                    if(nodeList2 == null)
+                    if (nodeList2 == null)
                         continue;
 
                     foreach (XmlNode node2 in nodeList2)

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Threading.Tasks;
+﻿using System.Linq.Expressions;
 using System.Transactions;
 using Nop.Core;
 using Nop.Core.Caching;
@@ -19,9 +15,9 @@ namespace Nop.Data
     {
         #region Fields
 
-        private readonly IEventPublisher _eventPublisher;
-        private readonly INopDataProvider _dataProvider;
-        private readonly IStaticCacheManager _staticCacheManager;
+        protected readonly IEventPublisher _eventPublisher;
+        protected readonly INopDataProvider _dataProvider;
+        protected readonly IStaticCacheManager _staticCacheManager;
 
         #endregion
 

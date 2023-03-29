@@ -1,8 +1,4 @@
-﻿using System;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Common;
@@ -30,27 +26,27 @@ namespace Nop.Web.Areas.Admin.Controllers
     {
         #region Fields
 
-        private readonly IAddressService _addressService;
-        private readonly IAttributeParser<AddressAttribute, AddressAttributeValue> _addressAttributeParser;
-        private readonly IAttributeParser<VendorAttribute, VendorAttributeValue> _vendorAttributeParser;
-        private readonly IAttributeService<VendorAttribute, VendorAttributeValue> _vendorAttributeService;
-        private readonly ICustomerActivityService _customerActivityService;
-        private readonly ICustomerService _customerService;
-        private readonly IGenericAttributeService _genericAttributeService;
-        private readonly ILocalizationService _localizationService;
-        private readonly ILocalizedEntityService _localizedEntityService;
-        private readonly INotificationService _notificationService;
-        private readonly IPermissionService _permissionService;
-        private readonly IPictureService _pictureService;
-        private readonly IUrlRecordService _urlRecordService;
-        private readonly IVendorModelFactory _vendorModelFactory;
-        private readonly IVendorService _vendorService;
+        protected readonly IAddressService _addressService;
+        protected readonly IAttributeParser<AddressAttribute, AddressAttributeValue> _addressAttributeParser;
+        protected readonly IAttributeParser<VendorAttribute, VendorAttributeValue> _vendorAttributeParser;
+        protected readonly IAttributeService<VendorAttribute, VendorAttributeValue> _vendorAttributeService;
+        protected readonly ICustomerActivityService _customerActivityService;
+        protected readonly ICustomerService _customerService;
+        protected readonly IGenericAttributeService _genericAttributeService;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly ILocalizedEntityService _localizedEntityService;
+        protected readonly INotificationService _notificationService;
+        protected readonly IPermissionService _permissionService;
+        protected readonly IPictureService _pictureService;
+        protected readonly IUrlRecordService _urlRecordService;
+        protected readonly IVendorModelFactory _vendorModelFactory;
+        protected readonly IVendorService _vendorService;
 
         #endregion
 
         #region Ctor
 
-        public VendorController(IAddressService addressService, 
+        public VendorController(IAddressService addressService,
             IAttributeParser<AddressAttribute, AddressAttributeValue> addressAttributeParser,
             IAttributeParser<VendorAttribute, VendorAttributeValue> vendorAttributeParser,
             IAttributeService<VendorAttribute, VendorAttributeValue> vendorAttributeService,
@@ -258,7 +254,7 @@ namespace Nop.Web.Areas.Admin.Controllers
             //parse vendor attributes
             var vendorAttributesXml = await ParseVendorAttributesAsync(form);
             var warnings = (await _vendorAttributeParser.GetAttributeWarningsAsync(vendorAttributesXml)).ToList();
-            foreach(var warning in warnings)
+            foreach (var warning in warnings)
             {
                 ModelState.AddModelError(string.Empty, warning);
             }
@@ -302,7 +298,7 @@ namespace Nop.Web.Areas.Admin.Controllers
 
                 if (!continueEditing)
                     return RedirectToAction("List");
-                
+
                 return RedirectToAction("Edit", new { id = vendor.Id });
             }
 
@@ -343,7 +339,7 @@ namespace Nop.Web.Areas.Admin.Controllers
             //parse vendor attributes
             var vendorAttributesXml = await ParseVendorAttributesAsync(form);
             var warnings = (await _vendorAttributeParser.GetAttributeWarningsAsync(vendorAttributesXml)).ToList();
-            foreach(var warning in warnings)
+            foreach (var warning in warnings)
             {
                 ModelState.AddModelError(string.Empty, warning);
             }
@@ -422,7 +418,7 @@ namespace Nop.Web.Areas.Admin.Controllers
 
                 if (!continueEditing)
                     return RedirectToAction("List");
-                
+
                 return RedirectToAction("Edit", new { id = vendor.Id });
             }
 

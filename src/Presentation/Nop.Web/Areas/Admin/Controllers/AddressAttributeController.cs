@@ -1,6 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Nop.Core.Domain.Common;
 using Nop.Services.Attributes;
 using Nop.Services.Localization;
@@ -19,13 +17,13 @@ namespace Nop.Web.Areas.Admin.Controllers
     {
         #region Fields
 
-        private readonly IAddressAttributeModelFactory _addressAttributeModelFactory;
-        private readonly IAttributeService<AddressAttribute, AddressAttributeValue> _addressAttributeService;
-        private readonly ICustomerActivityService _customerActivityService;
-        private readonly ILocalizedEntityService _localizedEntityService;
-        private readonly ILocalizationService _localizationService;
-        private readonly INotificationService _notificationService;
-        private readonly IPermissionService _permissionService;
+        protected readonly IAddressAttributeModelFactory _addressAttributeModelFactory;
+        protected readonly IAttributeService<AddressAttribute, AddressAttributeValue> _addressAttributeService;
+        protected readonly ICustomerActivityService _customerActivityService;
+        protected readonly ILocalizedEntityService _localizedEntityService;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly INotificationService _notificationService;
+        protected readonly IPermissionService _permissionService;
 
         #endregion
 
@@ -302,7 +300,7 @@ namespace Nop.Web.Areas.Admin.Controllers
 
             //prepare model
             model = await _addressAttributeModelFactory.PrepareAddressAttributeValueModelAsync(model, addressAttribute, null, true);
-            
+
             //if we got this far, something failed, redisplay form
             return View(model);
         }

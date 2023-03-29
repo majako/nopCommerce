@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Nop.Core.Caching;
+﻿using Nop.Core.Caching;
 using Nop.Core.Domain.Attributes;
 using Nop.Data;
 
@@ -19,9 +15,9 @@ namespace Nop.Services.Attributes
     {
         #region Fields
 
-        private readonly IRepository<TAttribute> _attributeRepository;
-        private readonly IRepository<TAttributeValue> _attributeValueRepository;
-        private readonly IStaticCacheManager _staticCacheManager;
+        protected readonly IRepository<TAttribute> _attributeRepository;
+        protected readonly IRepository<TAttributeValue> _attributeValueRepository;
+        protected readonly IStaticCacheManager _staticCacheManager;
 
         #endregion
 

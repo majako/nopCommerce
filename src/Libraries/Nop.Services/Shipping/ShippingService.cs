@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Nop.Core;
+﻿using Nop.Core;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Common;
 using Nop.Core.Domain.Customers;
@@ -27,25 +23,25 @@ namespace Nop.Services.Shipping
     {
         #region Fields
 
-        private readonly IAddressService _addressService;
-        private readonly IAttributeParser<CheckoutAttribute, CheckoutAttributeValue> _checkoutAttributeParser;
-        private readonly ICountryService _countryService;
-        private readonly ICustomerService _customerService;
-        private readonly IGenericAttributeService _genericAttributeService;
-        private readonly ILocalizationService _localizationService;
-        private readonly ILogger _logger;
-        private readonly IPickupPluginManager _pickupPluginManager;
-        private readonly IPriceCalculationService _priceCalculationService;
-        private readonly IProductAttributeParser _productAttributeParser;
-        private readonly IProductService _productService;
-        private readonly IRepository<ShippingMethod> _shippingMethodRepository;
-        private readonly IRepository<ShippingMethodCountryMapping> _shippingMethodCountryMappingRepository;
-        private readonly IRepository<Warehouse> _warehouseRepository;
-        private readonly IShippingPluginManager _shippingPluginManager;
-        private readonly IStateProvinceService _stateProvinceService;
-        private readonly IStoreContext _storeContext;
-        private readonly ShippingSettings _shippingSettings;
-        private readonly ShoppingCartSettings _shoppingCartSettings;
+        protected readonly IAddressService _addressService;
+        protected readonly IAttributeParser<CheckoutAttribute, CheckoutAttributeValue> _checkoutAttributeParser;
+        protected readonly ICountryService _countryService;
+        protected readonly ICustomerService _customerService;
+        protected readonly IGenericAttributeService _genericAttributeService;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly ILogger _logger;
+        protected readonly IPickupPluginManager _pickupPluginManager;
+        protected readonly IPriceCalculationService _priceCalculationService;
+        protected readonly IProductAttributeParser _productAttributeParser;
+        protected readonly IProductService _productService;
+        protected readonly IRepository<ShippingMethod> _shippingMethodRepository;
+        protected readonly IRepository<ShippingMethodCountryMapping> _shippingMethodCountryMappingRepository;
+        protected readonly IRepository<Warehouse> _warehouseRepository;
+        protected readonly IShippingPluginManager _shippingPluginManager;
+        protected readonly IStateProvinceService _stateProvinceService;
+        protected readonly IStoreContext _storeContext;
+        protected readonly ShippingSettings _shippingSettings;
+        protected readonly ShoppingCartSettings _shoppingCartSettings;
 
         #endregion
 
@@ -104,7 +100,7 @@ namespace Nop.Services.Shipping
         /// A task that represents the asynchronous operation
         /// The task result contains the rue if there are multiple items; otherwise false
         /// </returns>
-        protected async Task<bool> AreMultipleItemsAsync(IList<GetShippingOptionRequest.PackageItem> items)
+        protected virtual async Task<bool> AreMultipleItemsAsync(IList<GetShippingOptionRequest.PackageItem> items)
         {
             //no items
             if (!items.Any())
@@ -220,30 +216,30 @@ namespace Nop.Services.Shipping
         public virtual async Task<IList<ShippingMethod>> GetAllShippingMethodsAsync(int? filterByCountryId = null)
         {
             if (filterByCountryId.HasValue && filterByCountryId.Value > 0)
-            { 
+            {
                 return await _shippingMethodRepository.GetAllAsync(query =>
                 {
                     var query1 = from sm in query
-                        join smcm in _shippingMethodCountryMappingRepository.Table on sm.Id equals smcm.ShippingMethodId
-                        where smcm.CountryId == filterByCountryId.Value
-                        select sm.Id;
+                                 join smcm in _shippingMethodCountryMappingRepository.Table on sm.Id equals smcm.ShippingMethodId
+                                 where smcm.CountryId == filterByCountryId.Value
+                                 select sm.Id;
 
                     query1 = query1.Distinct();
 
                     var query2 = from sm in query
-                        where !query1.Contains(sm.Id)
-                        orderby sm.DisplayOrder, sm.Id
-                        select sm;
+                                 where !query1.Contains(sm.Id)
+                                 orderby sm.DisplayOrder, sm.Id
+                                 select sm;
 
                     return query2;
                 }, cache => cache.PrepareKeyForDefaultCache(NopShippingDefaults.ShippingMethodsAllCacheKey, filterByCountryId));
             }
 
-            return await _shippingMethodRepository.GetAllAsync(query=>
+            return await _shippingMethodRepository.GetAllAsync(query =>
             {
                 return from sm in query
-                    orderby sm.DisplayOrder, sm.Id
-                    select sm;
+                       orderby sm.DisplayOrder, sm.Id
+                       select sm;
             }, cache => default);
         }
 
@@ -283,7 +279,7 @@ namespace Nop.Services.Shipping
 
             var result = await _shippingMethodCountryMappingRepository.Table
                 .AnyAsync(smcm => smcm.ShippingMethodId == shippingMethod.Id && smcm.CountryId == countryId);
-            
+
             return result;
         }
 
@@ -362,14 +358,14 @@ namespace Nop.Services.Shipping
         /// </returns>
         public virtual async Task<IList<Warehouse>> GetAllWarehousesAsync(string name = null)
         {
-            var warehouses = await _warehouseRepository.GetAllAsync(query=>
+            var warehouses = await _warehouseRepository.GetAllAsync(query =>
             {
                 return from wh in query
-                    orderby wh.Name
-                    select wh;
+                       orderby wh.Name
+                       select wh;
             }, cache => default);
 
-            if (!string.IsNullOrEmpty(name)) 
+            if (!string.IsNullOrEmpty(name))
                 warehouses = warehouses.Where(wh => wh.Name.Contains(name)).ToList();
 
             return warehouses;
@@ -553,7 +549,7 @@ namespace Nop.Services.Shipping
 
             return totalWeight;
         }
-        
+
         /// <summary>
         /// Get total dimensions
         /// </summary>
@@ -640,7 +636,7 @@ namespace Nop.Services.Shipping
                     }
 
                     //associated products
-                    var (associatedProductsWidth, associatedProductsLength, associatedProductsHeight)  = await GetAssociatedProductDimensionsAsync(packageItem.ShoppingCartItem);
+                    var (associatedProductsWidth, associatedProductsLength, associatedProductsHeight) = await GetAssociatedProductDimensionsAsync(packageItem.ShoppingCartItem);
 
                     var quantity = packageItem.GetQuantity();
                     width += (productWidth + associatedProductsWidth) * quantity;

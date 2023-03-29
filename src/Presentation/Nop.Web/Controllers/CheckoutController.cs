@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Nop.Core;
 using Nop.Core.Domain.Common;
@@ -20,7 +15,6 @@ using Nop.Services.Common;
 using Nop.Services.Customers;
 using Nop.Services.Directory;
 using Nop.Services.Localization;
-using Nop.Services.Logging;
 using Nop.Services.Orders;
 using Nop.Services.Payments;
 using Nop.Services.Shipping;
@@ -31,6 +25,7 @@ using Nop.Web.Framework.Controllers;
 using Nop.Web.Framework.Mvc.Filters;
 using Nop.Web.Models.Checkout;
 using Nop.Web.Models.Common;
+using ILogger = Nop.Services.Logging.ILogger;
 
 namespace Nop.Web.Controllers
 {
@@ -39,34 +34,34 @@ namespace Nop.Web.Controllers
     {
         #region Fields
 
-        private readonly AddressSettings _addressSettings;
-        private readonly CaptchaSettings _captchaSettings;
-        private readonly CustomerSettings _customerSettings;
-        private readonly IAddressModelFactory _addressModelFactory;
-        private readonly IAddressService _addressService;
-        private readonly IAttributeParser<AddressAttribute, AddressAttributeValue> _addressAttributeParser;
-        private readonly ICheckoutModelFactory _checkoutModelFactory;
-        private readonly ICountryService _countryService;
-        private readonly ICustomerService _customerService;
-        private readonly IGenericAttributeService _genericAttributeService;
-        private readonly ILocalizationService _localizationService;
-        private readonly ILogger _logger;
-        private readonly IOrderProcessingService _orderProcessingService;
-        private readonly IOrderService _orderService;
-        private readonly IPaymentPluginManager _paymentPluginManager;
-        private readonly IPaymentService _paymentService;
-        private readonly IProductService _productService;
-        private readonly IShippingService _shippingService;
-        private readonly IShoppingCartService _shoppingCartService;
-        private readonly IStoreContext _storeContext;
-        private readonly ITaxService _taxService;
-        private readonly IWebHelper _webHelper;
-        private readonly IWorkContext _workContext;
-        private readonly OrderSettings _orderSettings;
-        private readonly PaymentSettings _paymentSettings;
-        private readonly RewardPointsSettings _rewardPointsSettings;
-        private readonly ShippingSettings _shippingSettings;
-        private readonly TaxSettings _taxSettings;
+        protected readonly AddressSettings _addressSettings;
+        protected readonly CaptchaSettings _captchaSettings;
+        protected readonly CustomerSettings _customerSettings;
+        protected readonly IAddressModelFactory _addressModelFactory;
+        protected readonly IAddressService _addressService;
+        protected readonly IAttributeParser<AddressAttribute, AddressAttributeValue> _addressAttributeParser;
+        protected readonly ICheckoutModelFactory _checkoutModelFactory;
+        protected readonly ICountryService _countryService;
+        protected readonly ICustomerService _customerService;
+        protected readonly IGenericAttributeService _genericAttributeService;
+        protected readonly ILocalizationService _localizationService;
+        protected readonly ILogger _logger;
+        protected readonly IOrderProcessingService _orderProcessingService;
+        protected readonly IOrderService _orderService;
+        protected readonly IPaymentPluginManager _paymentPluginManager;
+        protected readonly IPaymentService _paymentService;
+        protected readonly IProductService _productService;
+        protected readonly IShippingService _shippingService;
+        protected readonly IShoppingCartService _shoppingCartService;
+        protected readonly IStoreContext _storeContext;
+        protected readonly ITaxService _taxService;
+        protected readonly IWebHelper _webHelper;
+        protected readonly IWorkContext _workContext;
+        protected readonly OrderSettings _orderSettings;
+        protected readonly PaymentSettings _paymentSettings;
+        protected readonly RewardPointsSettings _rewardPointsSettings;
+        protected readonly ShippingSettings _shippingSettings;
+        protected readonly TaxSettings _taxSettings;
 
         #endregion
 
@@ -245,7 +240,7 @@ namespace Nop.Web.Controllers
             return string.Empty;
         }
 
-        protected async Task<JsonResult> EditAddressAsync(AddressModel addressModel, IFormCollection form, Func<Customer, IList<ShoppingCartItem>, Address, Task<JsonResult>> getResult)
+        protected virtual async Task<JsonResult> EditAddressAsync(AddressModel addressModel, IFormCollection form, Func<Customer, IList<ShoppingCartItem>, Address, Task<JsonResult>> getResult)
         {
             try
             {
@@ -256,7 +251,7 @@ namespace Nop.Web.Controllers
 
                     throw new Exception(errors);
                 }
-                
+
                 var customer = await _workContext.GetCurrentCustomerAsync();
                 var store = await _storeContext.GetCurrentStoreAsync();
                 var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
@@ -272,7 +267,7 @@ namespace Nop.Web.Controllers
                 var customAttributes = await _addressAttributeParser.ParseCustomAttributesAsync(form, NopCommonDefaults.AddressAttributeControlName);
                 var customAttributeWarnings = await _addressAttributeParser.GetAttributeWarningsAsync(customAttributes);
 
-                if (customAttributeWarnings.Any()) 
+                if (customAttributeWarnings.Any())
                     return Json(new { error = 1, message = customAttributeWarnings });
 
                 address = addressModel.ToEntity(address);
@@ -289,7 +284,7 @@ namespace Nop.Web.Controllers
             }
         }
 
-        protected async Task<JsonResult> DeleteAddressAsync(int addressId, Func<IList<ShoppingCartItem>, Task<JsonResult>> getResult)
+        protected virtual async Task<JsonResult> DeleteAddressAsync(int addressId, Func<IList<ShoppingCartItem>, Task<JsonResult>> getResult)
         {
             try
             {
@@ -499,7 +494,7 @@ namespace Nop.Web.Controllers
         {
             return await DeleteAddressAsync(addressId, async (cart) =>
             {
-                if (!opc) 
+                if (!opc)
                     return Json(new { redirect = Url.RouteUrl("CheckoutBillingAddress") });
 
                 var billingAddressModel = await _checkoutModelFactory.PrepareBillingAddressModelAsync(cart);
@@ -527,7 +522,7 @@ namespace Nop.Web.Controllers
                     return Json(new { redirect = Url.RouteUrl("CheckoutShippingAddress") });
 
                 var shippingAddressModel = await _checkoutModelFactory.PrepareShippingAddressModelAsync(cart);
-                
+
                 return Json(new
                 {
                     update_section = new UpdateSectionJsonModel
@@ -570,7 +565,7 @@ namespace Nop.Web.Controllers
                 });
             });
         }
-        
+
         #endregion
 
         #region Methods (multistep checkout)
@@ -2006,11 +2001,11 @@ namespace Nop.Web.Controllers
             {
                 var customer = await _workContext.GetCurrentCustomerAsync();
 
-                var isCaptchaSettingEnabled = await _customerService.IsGuestAsync(customer) && 
+                var isCaptchaSettingEnabled = await _customerService.IsGuestAsync(customer) &&
                     _captchaSettings.Enabled && _captchaSettings.ShowOnCheckoutPageForGuests;
 
                 var confirmOrderModel = new CheckoutConfirmModel()
-                { 
+                {
                     DisplayCaptcha = isCaptchaSettingEnabled
                 };
 

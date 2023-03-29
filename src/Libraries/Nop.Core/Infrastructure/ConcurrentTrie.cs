@@ -9,80 +9,8 @@ namespace Nop.Core.Infrastructure
     /// <summary>
     /// A thread-safe implementation of a radix tree
     /// </summary>
-    public class ConcurrentTrie<TValue>
+    public partial class ConcurrentTrie<TValue>
     {
-        private class TrieNode
-        {
-            private class ValueWrapper
-            {
-                public readonly TValue Value;
-
-                public ValueWrapper(TValue value)
-                {
-                    Value = value;
-                }
-            }
-
-            // used to avoid keeping a separate boolean flag that would use another byte per node
-            private static readonly ValueWrapper _deleted = new(default);
-
-            public readonly string Label;
-            public readonly Dictionary<char, TrieNode> Children = new();
-            private volatile ValueWrapper _value;
-
-            public bool IsDeleted => _value == _deleted;
-            public bool HasValue => _value != null && !IsDeleted;
-
-            public TrieNode(string label = "")
-            {
-                Label = label;
-            }
-
-            public TrieNode(string label, TrieNode node) : this(label)
-            {
-                Children = node.Children;
-                _value = node._value;
-            }
-
-            public bool TryGetValue(out TValue value)
-            {
-                var wrapper = _value;
-                value = default;
-                if (wrapper == null)
-                    return false;
-                value = wrapper.Value;
-                return true;
-            }
-
-            public bool TryRemoveValue(out TValue value)
-            {
-                var wrapper = Interlocked.Exchange(ref _value, null);
-                if (wrapper == null)
-                {
-                    value = default;
-                    return false;
-                }
-                value = wrapper.Value;
-                return true;
-            }
-
-            public void SetValue(TValue value)
-            {
-                _value = new(value);
-            }
-
-            public TValue GetOrAddValue(TValue value)
-            {
-                var wrapper = Interlocked.CompareExchange(ref _value, new(value), null);
-                return wrapper != null ? wrapper.Value : value;
-            }
-
-            public void Delete()
-            {
-                _value = _deleted;
-            }
-        }
-
         private volatile TrieNode _root = new();
         private readonly StripedReaderWriterLock _locks = new();
         private readonly ReaderWriterLockSlim _structureLock = new();
@@ -109,166 +37,12 @@ namespace Nop.Core.Infrastructure
             _root.Children[subtreeRoot.Label[0]] = subtreeRoot;
         }
 
-        /// <summary>
-        /// Attempts to get the value associated with the specified key
-        /// </summary>
-        /// <param name="key">The key of the item to get (case-sensitive)</param>
-        /// <param name="value">The value associated with <paramref name="key"/>, if found</param>
-        /// <returns>
-        /// True if the key was found, otherwise false
-        /// </returns>
-        public bool TryGetValue(string key, out TValue value)
-        {
-            if (key is null)
-                throw new ArgumentNullException(nameof(key));
+        #endregion
 
-            value = default;
-            return Find(key, _root, out var node) && node.TryGetValue(out value);
-        }
-
-        /// <summary>
-        /// Adds a key-value pair to the trie
-        /// </summary>
-        /// <param name="key">The key of the new item (case-sensitive)</param>
-        /// <param name="value">The value to be associated with <paramref name="key"/></param>
-        public void Add(string key, TValue value)
-        {
-            if (string.IsNullOrEmpty(key))
-                throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
-
-            GetOrAddNode(key, value, true);
-        }
-
-        /// <summary>
-        /// Clears the trie
-        /// </summary>
-        public void Clear()
-        {
-            _root = new();
-        }
-
-        /// <summary>
-        /// Gets all key-value pairs for keys starting with the given prefix
-        /// </summary>
-        /// <param name="prefix">The prefix (case-sensitive) to search for</param>
-        /// <returns>
-        /// All key-value pairs for keys starting with <paramref name="prefix"/>
-        /// </returns>
-        public IEnumerable<KeyValuePair<string, TValue>> Search(string prefix)
-        {
-            if (prefix is null)
-                throw new ArgumentNullException(nameof(prefix));
-
-            if (!Find(prefix, _root, out var node))
-                return Enumerable.Empty<KeyValuePair<string, TValue>>();
-
-            // depth-first traversal
-            IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
-            {
-                if (n.TryGetValue(out var value))
-                    yield return new KeyValuePair<string, TValue>(s, value);
-                var nLock = GetLock(n);
-                nLock.EnterReadLock();
-                List<TrieNode> children;
-                try
-                {
-                    // we can't know what is done during enumeration, so we need to make a copy of the children
-                    children = n.Children.Values.ToList();
-                }
-                finally { nLock.ExitReadLock(); }
-                foreach (var child in children)
-                {
-                    foreach (var kv in traverse(child, s + child.Label))
-                        yield return kv;
-                }
-            }
-            return traverse(node, prefix);
-        }
-
-        /// <summary>
-        /// Removes the item with the given key, if present
-        /// </summary>
-        /// <param name="key">The key (case-sensitive) of the item to be removed</param>
-        public void Remove(string key)
-        {
-            if (string.IsNullOrEmpty(key))
-                throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
-
-            Remove(_root, key);
-        }
-
-        /// <summary>
-        /// Gets the value with the specified key, adding a new item if one does not exist
-        /// </summary>
-        /// <param name="key">The key (case-sensitive) of the item to be deleted</param>
-        /// <param name="valueFactory">A function for producing a new value if one was not found</param>
-        /// <returns>
-        /// The existing value for the given key, if found, otherwise the newly inserted value
-        /// </returns>
-        public TValue GetOrAdd(string key, TValue value)
-        {
-            if (string.IsNullOrEmpty(key))
-                throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
-
-            // the value is already set when we get the node if it already exists, but we call GetOrAddValue anyway to get the value
-            return GetOrAddNode(key, value).GetOrAddValue(value);
-        }
-
-        /// <summary>
-        /// Attempts to remove all items with keys starting with the specified prefix
-        /// </summary>
-        /// <param name="prefix">The prefix (case-sensitive) of the items to be deleted</param>
-        /// <param name="subtree">The subtree containing all deleted items, if found</param>
-        /// <returns>
-        /// True if the prefix was successfully removed from the trie, otherwise false
-        /// </returns>
-        public bool Prune(string prefix, out ConcurrentTrie<TValue> subtree)
-        {
-            if (prefix is null)
-                throw new ArgumentNullException(nameof(prefix));
-
-            subtree = default;
-            var node = _root;
-            var parent = node;
-            var span = prefix.AsSpan();
-            var i = 0;
-            while (i < span.Length)
-            {
-                var c = span[i];
-                var parentLock = GetLock(parent);
-                parentLock.EnterUpgradeableReadLock();
-                try
-                {
-                    if (!parent.Children.TryGetValue(c, out node))
-                        return false;
-                    var label = node.Label.AsSpan();
-                    var k = GetCommonPrefixLength(span[i..], label);
-                    if (k == span.Length - i)
-                    {
-                        parentLock.EnterWriteLock();
-                        try
-                        {
-                            if (parent.Children.Remove(c, out node))
-                            {
-                                subtree = new(new TrieNode(prefix[..i] + node.Label, node));
-                                return true;
-                            }
-                        }
-                        finally { parentLock.ExitWriteLock(); }
-                        return false;   // was removed by another thread
-                    }
-                    if (k < label.Length)
-                        return false;
-                    i += label.Length;
-                }
-                finally { parentLock.ExitUpgradeableReadLock(); }
-                parent = node;
-            }
-            return false;
-        }
+        #region Utilities
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int GetCommonPrefixLength(ReadOnlySpan<char> s1, ReadOnlySpan<char> s2)
+        protected static int GetCommonPrefixLength(ReadOnlySpan<char> s1, ReadOnlySpan<char> s2)
         {
             var i = 0;
             var minLength = Math.Min(s1.Length, s2.Length);
@@ -283,12 +57,12 @@ namespace Nop.Core.Infrastructure
         /// <remarks>
         /// May return the same lock for two different nodes, so the user needs to check to avoid lock recursion exceptions
         /// </remarks>
-        private ReaderWriterLockSlim GetLock(TrieNode node)
+        protected virtual ReaderWriterLockSlim GetLock(TrieNode node)
         {
             return _locks.GetLock(node.Children);
         }
 
-        private bool Find(string key, TrieNode subtreeRoot, out TrieNode node)
+        protected virtual bool Find(string key, TrieNode subtreeRoot, out TrieNode node)
         {
             node = subtreeRoot;
             if (key.Length == 0)
@@ -317,7 +91,7 @@ namespace Nop.Core.Infrastructure
             }
         }
 
-        private TrieNode GetOrAddNode(ReadOnlySpan<char> key, TValue value, bool overwrite = false)
+        protected virtual TrieNode GetOrAddNode(ReadOnlySpan<char> key, TValue value, bool overwrite = false)
         {
             var node = _root;
             var suffix = key;
@@ -422,7 +196,7 @@ namespace Nop.Core.Infrastructure
             return GetOrAddNode(key, value, overwrite);
         }
 
-        private void Remove(TrieNode subtreeRoot, ReadOnlySpan<char> key)
+        protected virtual void Remove(TrieNode subtreeRoot, ReadOnlySpan<char> key)
         {
             TrieNode node = null, grandparent = null;
             var parent = subtreeRoot;
@@ -537,6 +311,242 @@ namespace Nop.Core.Infrastructure
                 }
             }
             finally { _structureLock.ExitWriteLock(); }
+        }
+
+        #endregion
+
+        #region Methods
+
+        /// <summary>
+        /// Attempts to get the value associated with the specified key
+        /// </summary>
+        /// <param name="key">The key of the item to get (case-sensitive)</param>
+        /// <param name="value">The value associated with <paramref name="key"/>, if found</param>
+        /// <returns>
+        /// True if the key was found, otherwise false
+        /// </returns>
+        public virtual bool TryGetValue(string key, out TValue value)
+        {
+            if (key is null)
+                throw new ArgumentNullException(nameof(key));
+
+            value = default;
+            return Find(key, _root, out var node) && node.TryGetValue(out value);
+        }
+
+        /// <summary>
+        /// Adds a key-value pair to the trie
+        /// </summary>
+        /// <param name="key">The key of the new item (case-sensitive)</param>
+        /// <param name="value">The value to be associated with <paramref name="key"/></param>
+        public virtual void Add(string key, TValue value)
+        {
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
+
+            GetOrAddNode(key, value, true);
+        }
+
+        /// <summary>
+        /// Clears the trie
+        /// </summary>
+        public virtual void Clear()
+        {
+            _root = new();
+        }
+
+        /// <summary>
+        /// Gets all key-value pairs for keys starting with the given prefix
+        /// </summary>
+        /// <param name="prefix">The prefix (case-sensitive) to search for</param>
+        /// <returns>
+        /// All key-value pairs for keys starting with <paramref name="prefix"/>
+        /// </returns>
+        public virtual IEnumerable<KeyValuePair<string, TValue>> Search(string prefix)
+        {
+            if (prefix is null)
+                throw new ArgumentNullException(nameof(prefix));
+
+            if (!Find(prefix, _root, out var node))
+                return Enumerable.Empty<KeyValuePair<string, TValue>>();
+
+            // depth-first traversal
+            IEnumerable<KeyValuePair<string, TValue>> traverse(TrieNode n, string s)
+            {
+                if (n.TryGetValue(out var value))
+                    yield return new KeyValuePair<string, TValue>(s, value);
+                var nLock = GetLock(n);
+                nLock.EnterReadLock();
+                List<TrieNode> children;
+                try
+                {
+                    // we can't know what is done during enumeration, so we need to make a copy of the children
+                    children = n.Children.Values.ToList();
+                }
+                finally { nLock.ExitReadLock(); }
+                foreach (var child in children)
+                {
+                    foreach (var kv in traverse(child, s + child.Label))
+                        yield return kv;
+                }
+            }
+            return traverse(node, prefix);
+        }
+
+        /// <summary>
+        /// Removes the item with the given key, if present
+        /// </summary>
+        /// <param name="key">The key (case-sensitive) of the item to be removed</param>
+        public void Remove(string key)
+        {
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
+
+            Remove(_root, key);
+        }
+
+        /// <summary>
+        /// Gets the value with the specified key, adding a new item if one does not exist
+        /// </summary>
+        /// <param name="key">The key (case-sensitive) of the item to be deleted</param>
+        /// <param name="valueFactory">A function for producing a new value if one was not found</param>
+        /// <returns>
+        /// The existing value for the given key, if found, otherwise the newly inserted value
+        /// </returns>
+        public TValue GetOrAdd(string key, TValue value)
+        {
+            if (string.IsNullOrEmpty(key))
+                throw new ArgumentException($"'{nameof(key)}' cannot be null or empty.", nameof(key));
+
+            // the value is already set when we get the node if it already exists, but we call GetOrAddValue anyway to get the value
+            return GetOrAddNode(key, value).GetOrAddValue(value);
+        }
+
+        /// <summary>
+        /// Attempts to remove all items with keys starting with the specified prefix
+        /// </summary>
+        /// <param name="prefix">The prefix (case-sensitive) of the items to be deleted</param>
+        /// <param name="subtree">The subtree containing all deleted items, if found</param>
+        /// <returns>
+        /// True if the prefix was successfully removed from the trie, otherwise false
+        /// </returns>
+        public virtual bool Prune(string prefix, out ConcurrentTrie<TValue> subtree)
+        {
+            if (prefix is null)
+                throw new ArgumentNullException(nameof(prefix));
+
+            subtree = default;
+            var node = _root;
+            var parent = node;
+            var span = prefix.AsSpan();
+            var i = 0;
+            while (i < span.Length)
+            {
+                var c = span[i];
+                var parentLock = GetLock(parent);
+                parentLock.EnterUpgradeableReadLock();
+                try
+                {
+                    if (!parent.Children.TryGetValue(c, out node))
+                        return false;
+                    var label = node.Label.AsSpan();
+                    var k = GetCommonPrefixLength(span[i..], label);
+                    if (k == span.Length - i)
+                    {
+                        parentLock.EnterWriteLock();
+                        try
+                        {
+                            if (parent.Children.Remove(c, out node))
+                            {
+                                subtree = new(new TrieNode(prefix[..i] + node.Label, node));
+                                return true;
+                            }
+                        }
+                        finally { parentLock.ExitWriteLock(); }
+                        return false;   // was removed by another thread
+                    }
+                    if (k < label.Length)
+                        return false;
+                    i += label.Length;
+                }
+                finally { parentLock.ExitUpgradeableReadLock(); }
+                parent = node;
+            }
+            return false;
+        }
+
+        #endregion
+
+        protected class TrieNode
+        {
+            private class ValueWrapper
+            {
+                public readonly TValue Value;
+
+                public ValueWrapper(TValue value)
+                {
+                    Value = value;
+                }
+            }
+
+            // used to avoid keeping a separate boolean flag that would use another byte per node
+            private static readonly ValueWrapper _deleted = new(default);
+
+            public readonly string Label;
+            public readonly Dictionary<char, TrieNode> Children = new();
+            private volatile ValueWrapper _value;
+
+            public bool IsDeleted => _value == _deleted;
+            public bool HasValue => _value != null && !IsDeleted;
+
+            public TrieNode(string label = "")
+            {
+                Label = label;
+            }
+
+            public TrieNode(string label, TrieNode node) : this(label)
+            {
+                Children = node.Children;
+                _value = node._value;
+            }
+
+            public bool TryGetValue(out TValue value)
+            {
+                var wrapper = _value;
+                value = default;
+                if (wrapper == null)
+                    return false;
+                value = wrapper.Value;
+                return true;
+            }
+
+            public bool TryRemoveValue(out TValue value)
+            {
+                var wrapper = Interlocked.Exchange(ref _value, null);
+                if (wrapper == null)
+                {
+                    value = default;
+                    return false;
+                }
+                value = wrapper.Value;
+                return true;
+            }
+
+            public void SetValue(TValue value)
+            {
+                _value = new(value);
+            }
+
+            public TValue GetOrAddValue(TValue value)
+            {
+                var wrapper = Interlocked.CompareExchange(ref _value, new(value), null);
+                return wrapper != null ? wrapper.Value : value;
+            }
+
+            public void Delete()
+            {
+                _value = _deleted;
+            }
         }
     }
 }
