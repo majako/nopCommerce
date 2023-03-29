@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Threading;
+﻿using System.Runtime.CompilerServices;
 
 namespace Nop.Core.Infrastructure
 {
@@ -11,19 +7,14 @@ namespace Nop.Core.Infrastructure
     /// </summary>
     public partial class ConcurrentTrie<TValue>
     {
+        #region Fields
         private volatile TrieNode _root = new();
         private readonly StripedReaderWriterLock _locks = new();
         private readonly ReaderWriterLockSlim _structureLock = new();
 
-        /// <summary>
-        /// Gets a collection that contains the keys in the <see cref="ConcurrentTrie{TValue}" />
-        /// </summary>
-        public IEnumerable<string> Keys => Search(string.Empty).Select(t => t.Key);
+        #endregion
 
-        /// <summary>
-        /// Gets a collection that contains the values in the <see cref="ConcurrentTrie{TValue}" />
-        /// </summary>
-        public IEnumerable<TValue> Values => Search(string.Empty).Select(t => t.Value);
+        #region Ctor
 
         /// <summary>
         /// Initializes a new empty instance of <see cref="ConcurrentTrie{TValue}" />
@@ -477,6 +468,22 @@ namespace Nop.Core.Infrastructure
 
         #endregion
 
+        #region Properties
+
+        /// <summary>
+        /// Gets a collection that contains the keys in the <see cref="ConcurrentTrie{TValue}" />
+        /// </summary>
+        public IEnumerable<string> Keys => Search(string.Empty).Select(t => t.Key);
+
+        /// <summary>
+        /// Gets a collection that contains the values in the <see cref="ConcurrentTrie{TValue}" />
+        /// </summary>
+        public IEnumerable<TValue> Values => Search(string.Empty).Select(t => t.Value);
+
+        #endregion
+
+        #region Nested class
+
         protected class TrieNode
         {
             private class ValueWrapper
@@ -548,5 +555,7 @@ namespace Nop.Core.Infrastructure
                 _value = _deleted;
             }
         }
+
+        #endregion
     }
 }
