@@ -770,24 +770,25 @@ namespace Nop.Services.Catalog
 
             return await _staticCacheManager.GetAsync(breadcrumbCacheKey, async () =>
             {
+                var allCategoriesById = allCategories?.DistinctBy(c => c.Id).ToDictionary(c => c.Id);
                 var result = new List<Category>();
 
                 //used to prevent circular references
-                var alreadyProcessedCategoryIds = new List<int>();
+                var alreadyProcessedCategoryIds = new HashSet<int>();
 
                 while (category != null && //not null
                        !category.Deleted && //not deleted
                        (showHidden || category.Published) && //published
+                       !alreadyProcessedCategoryIds.Contains(category.Id) &&    //prevent circular references
                        (showHidden || await _aclService.AuthorizeAsync(category)) && //ACL
-                       (showHidden || await _storeMappingService.AuthorizeAsync(category)) && //Store mapping
-                       !alreadyProcessedCategoryIds.Contains(category.Id)) //prevent circular references
+                       (showHidden || await _storeMappingService.AuthorizeAsync(category))) //Store mapping
                 {
                     result.Add(category);
 
                     alreadyProcessedCategoryIds.Add(category.Id);
 
-                    category = allCategories != null
-                        ? allCategories.FirstOrDefault(c => c.Id == category.ParentCategoryId)
+                    category = allCategoriesById != null
+                        ? allCategoriesById.GetValueOrDefault(category.ParentCategoryId)
                         : await GetCategoryByIdAsync(category.ParentCategoryId);
                 }
 
