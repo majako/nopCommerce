@@ -1,0 +1,6 @@
+[submodule "src/Plugins/Majako.Plugin.KlarnaCheckout"]
+	path = src/Plugins/Majako.Plugin.KlarnaCheckout
+	url = https://github.com/majako/nopcommerce-klarna-checkout.git
+[submodule "src/Libraries/Majako.Plugin.Common"]
+	path = src/Libraries/Majako.Plugin.Common
+	url = https://github.com/majako/nopcommerce-plugin-common.git

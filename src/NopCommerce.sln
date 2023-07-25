@@ -61,6 +61,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nop.Plugin.Misc.SendinBlue"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nop.Plugin.Tax.Avalara", "Plugins\Nop.Plugin.Tax.Avalara\Nop.Plugin.Tax.Avalara.csproj", "{2426B75D-23D4-41EF-8924-47650C8A18C7}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Majako.Plugin.KlarnaCheckout", "Majako.Plugin.KlarnaCheckout", "{70A6F3FE-3A32-4707-9E42-C3E82D3B7DB0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Majako.Plugin.Payments.KlarnaCheckout", "Plugins\Majako.Plugin.KlarnaCheckout\Majako.Plugin.Payments.KlarnaCheckout\Majako.Plugin.Payments.KlarnaCheckout.csproj", "{029516BD-DA10-4443-92BB-3677D6A73C2E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -339,6 +343,18 @@ Global
 		{2426B75D-23D4-41EF-8924-47650C8A18C7}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{2426B75D-23D4-41EF-8924-47650C8A18C7}.Release|x86.ActiveCfg = Release|Any CPU
 		{2426B75D-23D4-41EF-8924-47650C8A18C7}.Release|x86.Build.0 = Release|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Debug|x86.Build.0 = Debug|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Release|x86.ActiveCfg = Release|Any CPU
+		{029516BD-DA10-4443-92BB-3677D6A73C2E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -369,6 +385,8 @@ Global
 		{C3822149-FBC4-40A2-AD2A-26B0DC881810} = {7881B112-7843-4542-B1F7-F99553FB9BB7}
 		{7B08DACB-8E11-416D-9DDF-B0EEF847A8ED} = {7881B112-7843-4542-B1F7-F99553FB9BB7}
 		{2426B75D-23D4-41EF-8924-47650C8A18C7} = {7881B112-7843-4542-B1F7-F99553FB9BB7}
+		{70A6F3FE-3A32-4707-9E42-C3E82D3B7DB0} = {7881B112-7843-4542-B1F7-F99553FB9BB7}
+		{029516BD-DA10-4443-92BB-3677D6A73C2E} = {70A6F3FE-3A32-4707-9E42-C3E82D3B7DB0}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {EE72A8B2-332A-4175-9319-6726D36E9D25}
