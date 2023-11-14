@@ -21,8 +21,8 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
 
             sw.Stop();
             var delta = GC.GetTotalMemory(true) / 1024.0 / 1024.0 - memory;
-            Console.WriteLine("Elapsed teme: {0:F}s", sw.ElapsedMilliseconds / 1000.0);
-            Console.WriteLine("Memory usege: {0:F}Mb", delta);
+            Console.WriteLine("Elapsed time: {0:F} s", sw.ElapsedMilliseconds / 1000.0);
+            Console.WriteLine("Memory usage: {0:F} MB", delta);
         }
 
         [SetUp]
@@ -184,7 +184,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         [Test]
         [TestCase(typeof(NopConcurrentCollection<int>))]
         [TestCase(typeof(ConcurrentTrie<int>))]
-        [Ignore("Not a test, used for profiling.")]
+        [Ignore("Expensive concurrency test, enable manually.")]
         public void DoesNotBreakDuringParallelAddRemove(Type oType)
         {
             var sut = Activator.CreateInstance(oType) as IConcurrentCollection<int>;
@@ -212,7 +212,7 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         [Test]
         [TestCase(typeof(NopConcurrentCollection<int>))]
         [TestCase(typeof(ConcurrentTrie<int>))]
-        [Ignore("Not a test, used for profiling.")]
+        [Ignore("Expensive concurrency test, enable manually.")]
         public void DoesNotBreakDuringParallelAddPrune(Type oType)
         {
             var sut = Activator.CreateInstance(oType) as IConcurrentCollection<int>;
