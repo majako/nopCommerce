@@ -182,7 +182,9 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
+        [TestCase(typeof(NopConcurrentCollection<int>))]
         [TestCase(typeof(ConcurrentTrie<int>))]
+        [Ignore("Not a test, used for profiling.")]
         public void DoesNotBreakDuringParallelAddRemove(Type oType)
         {
             var sut = Activator.CreateInstance(oType) as IConcurrentCollection<int>;
@@ -208,7 +210,9 @@ namespace Nop.Tests.Nop.Core.Tests.Infrastructure
         }
 
         [Test]
+        [TestCase(typeof(NopConcurrentCollection<int>))]
         [TestCase(typeof(ConcurrentTrie<int>))]
+        [Ignore("Not a test, used for profiling.")]
         public void DoesNotBreakDuringParallelAddPrune(Type oType)
         {
             var sut = Activator.CreateInstance(oType) as IConcurrentCollection<int>;
